@@ -1,0 +1,28 @@
+#!/bin/sh
+# Refuse a push whose new commits do not touch HANDOVER.md (see HANDOVER.md, Section 0).
+# Enable once per clone:    git config core.hooksPath .githooks
+# Bypass for a trivial push: SKIP_HANDOVER_CHECK=1 git push
+
+[ "$SKIP_HANDOVER_CHECK" = "1" ] && exit 0
+
+zero=0000000000000000000000000000000000000000
+status=0
+while read local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue                      # deleting a remote branch
+    if [ "$remote_sha" = "$zero" ]; then
+        new="$local_sha --not --remotes"                         # new remote branch: commits no remote has yet
+    else
+        new="$remote_sha..$local_sha"
+    fi
+    [ -z "$(git rev-list $new | head -n 1)" ] && continue        # nothing new to push
+    if ! git log --format= --name-only $new | grep -qx "HANDOVER.md"; then
+        echo "pre-push: no commit in $local_ref -> $remote_ref updates HANDOVER.md." >&2
+        status=1
+    fi
+done
+
+if [ $status -ne 0 ]; then
+    echo "          Add a change-log entry (Section 21), update the affected sections, commit, push again." >&2
+    echo "          For a trivial push only: SKIP_HANDOVER_CHECK=1 git push" >&2
+fi
+exit $status

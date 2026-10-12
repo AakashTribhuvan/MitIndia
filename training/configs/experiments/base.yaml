@@ -1,0 +1,39 @@
+# Shared defaults for landmark experiments. Experiment files override any key (deep merge).
+seed: 42
+output_root: experiments/runs
+
+data:
+  split_dir: data/metadata/splits/include   # INCLUDE 263 words, official split
+
+features:
+  seq_len: 24          # T frames per clip (spec: compare 16 / 24 / 32)
+  use_velocity: true   # append frame-to-frame differences of coordinates
+  clip_value: 10.0
+
+augment:
+  rotation_deg: 10.0
+  scale: 0.10
+  shear: 0.10
+  shift: 0.05
+  jitter: 0.003
+  hand_dropout: 0.05
+  temporal_crop_min: 0.8
+
+model:
+  temporal: bilstm     # none | bilstm | transformer
+  mlp_hidden: 256
+  mlp_out: 128
+  lstm_hidden: 256
+  lstm_layers: 2
+  dropout: 0.3
+
+train:
+  epochs: 150
+  batch_size: 64
+  lr: 0.001            # landmark models train from scratch; CNN fine-tuning would use ~1e-5
+  weight_decay: 0.05
+  label_smoothing: 0.1
+  warmup_epochs: 5
+  patience: 30         # early stopping on validation macro-F1
+  amp: true
+  class_weights: false

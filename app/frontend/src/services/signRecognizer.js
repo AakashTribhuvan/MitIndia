@@ -9,14 +9,14 @@
  * Configure with VITE_API_URL (backend address) and VITE_SIGN_MODEL=off to disable.
  */
 
-const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
+export const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
 const MODE = import.meta.env?.VITE_SIGN_MODEL || 'auto'
 const WS_URL = API_BASE_URL.replace(/^http/, 'ws') + '/stream'
 const HEALTH_TIMEOUT_MS = 2500
 
 const round = (v) => Math.round(v * 1e4) / 1e4
 
-function toFrame(results, t) {
+export function toFrame(results, t) {
   const hands = (results.multiHandLandmarks || []).map((landmarks, i) => ({
     landmarks: landmarks.map((p) => [round(p.x), round(p.y), round(p.z ?? 0)]),
     handedness: results.multiHandedness?.[i]?.label ?? null,
@@ -36,7 +36,7 @@ class SignRecognizer {
     this.ws = null
     this.started = false
     this.onPrediction = null // whole-sign result when a sign ends
-    this.onActivity = null // 'signing' when a sign starts, 'idle' after it ends
+    this.onActivity = null // 'signing' when a sign starts, 'ended' when it is classified, 'idle' when it was too short
     this.onProvisional = null // live best guess while signing (display only)
     this.onStatusChange = null
   }
@@ -83,8 +83,8 @@ class SignRecognizer {
       else if (ev.event === 'provisional') this.onProvisional?.(ev.guess)
       else if (ev.event === 'too_short') this.onActivity?.('idle')
       else if (ev.event === 'sign_ended') {
-        this.onActivity?.('idle')
-        this.onPrediction?.(ev.result)
+        this.onActivity?.('ended')
+        this.onPrediction?.({ ...ev.result, stats: ev.stats })
       } else if (ev.event === 'error') this._setStatus('offline', ev.detail)
     }
     ws.onclose = () => {

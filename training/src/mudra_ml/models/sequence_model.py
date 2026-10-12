@@ -4,8 +4,6 @@
     temporal = "bilstm"       Landmark MLP + BiLSTM (ablation C; spec's main architecture)
     temporal = "transformer"  Landmark MLP + Transformer encoder (comparison)
 
-``appearance_dim > 0`` adds the RGB CNN branch: per-frame CNN features are concatenated
-with the landmark features before the temporal model (ablations D/E).
 Logits are returned (no softmax) for use with CrossEntropyLoss.
 """
 
@@ -26,7 +24,6 @@ class ModelConfig:
     temporal: str = "bilstm"
     mlp_hidden: int = 256
     mlp_out: int = 128
-    appearance_dim: int = 0
     lstm_hidden: int = 256
     lstm_layers: int = 2
     tf_dim: int = 192
@@ -38,6 +35,8 @@ class ModelConfig:
 
     @classmethod
     def from_dict(cls, values: dict) -> ModelConfig:
+        values = dict(values)
+        values.pop("appearance_dim", None)  # older model cards; the RGB branch was never used
         return cls(**values)
 
     def to_dict(self) -> dict:
@@ -61,7 +60,7 @@ class SequenceClassifier(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.frame_encoder = LandmarkMLP(cfg.input_dim, cfg.mlp_hidden, cfg.mlp_out, dropout=cfg.dropout / 2)
-        fused_dim = cfg.mlp_out + cfg.appearance_dim
+        fused_dim = cfg.mlp_out
 
         if cfg.temporal == "none":
             self.temporal = None
@@ -91,13 +90,9 @@ class SequenceClassifier(nn.Module):
         self.pool = AttentionPool(out_dim) if self.temporal is not None else None
         self.head = nn.Sequential(nn.LayerNorm(out_dim), nn.Dropout(cfg.dropout), nn.Linear(out_dim, cfg.num_classes))
 
-    def encode(self, landmarks: torch.Tensor, appearance: torch.Tensor | None = None) -> torch.Tensor:
-        """[B, T, D] (+ optional [B, T, A]) -> pooled sequence representation [B, out_dim]."""
+    def encode(self, landmarks: torch.Tensor) -> torch.Tensor:
+        """[B, T, D] -> pooled sequence representation [B, out_dim]."""
         x = self.frame_encoder(landmarks)
-        if self.cfg.appearance_dim:
-            if appearance is None:
-                raise ValueError("Model was built with an appearance branch; pass appearance features")
-            x = torch.cat([x, appearance], dim=-1)
 
         if self.cfg.temporal == "none":
             return x.mean(dim=1)
@@ -108,8 +103,8 @@ class SequenceClassifier(nn.Module):
             x = self.temporal(x)
         return self.pool(x)
 
-    def forward(self, landmarks: torch.Tensor, appearance: torch.Tensor | None = None) -> torch.Tensor:
-        return self.head(self.encode(landmarks, appearance))
+    def forward(self, landmarks: torch.Tensor) -> torch.Tensor:
+        return self.head(self.encode(landmarks))
 
 
 def build_model(cfg: ModelConfig) -> SequenceClassifier:

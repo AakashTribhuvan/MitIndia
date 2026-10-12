@@ -19,12 +19,20 @@ import {
   ArrowRightLeft
 } from 'lucide-react'
 import handTracker from '../services/handTracker'
-import signRecognizer from '../services/signRecognizer'
+import signRecognizer, { API_BASE_URL } from '../services/signRecognizer'
 import faceExpressionTracker from '../services/faceExpressionTracker'
 import { classifyISLSign } from '../services/islClassifier'
 import { ISL_VOCABULARY_LEXICON, buildMultilingualSentence, findISLLexiconItem, readableSign } from '../services/islDictionary'
 import { analyzeExpression, FACE_UNAVAILABLE_EXPRESSION, INITIAL_EXPRESSION } from '../services/expressionAnalyzer'
 import MudraAvatarViewer from '../components/avatar/MudraAvatarViewer'
+import SignReference from '../components/SignReference'
+
+const AUTO_SPEAK_PAUSE_MS = 2500
+// An unsure sign still adds its best guess at this confidence or more (below it the sign is dropped)
+const AUTO_ADD_MIN = 0.5
+const LOW_FPS = 15
+// Close-up framing: shoulders wider than this share of the frame, or lower than this height, leave no room for the hands
+const FRAMING = { maxShoulderWidth: 0.6, maxShoulderY: 0.72 }
 
 export default function CommunicatePage() {
   // Mode toggle: 'sign-to-speech' (ISL -> Voice) vs 'speech-to-sign' (Voice/Text -> 3D ISL Avatar)
@@ -60,7 +68,37 @@ export default function CommunicatePage() {
   const expressionPendingRef = useRef({ tone: null, count: 0 })
   const smoothedConfidenceRef = useRef(0)
   const [suggestions, setSuggestions] = useState([])
+  // Framing check: the model was trained on signers seen from the waist up
+  const [framing, setFraming] = useState(null) // null | 'no_shoulders' | 'too_close'
+  const [trackerFps, setTrackerFps] = useState(0)
+  const framingRef = useRef({ frames: 0, noShoulders: 0, tooClose: 0 })
+  // Speak the sentence automatically after a pause in signing
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    try {
+      return window.localStorage.getItem('mudra.autoSpeak') !== 'off'
+    } catch {
+      return true
+    }
+  })
+  const autoSpeakTimerRef = useRef(null)
+  const lastSpokenRef = useRef('')
+  const sentenceRef = useRef('')
   const [modelState, setModelState] = useState({ status: signRecognizer.status, info: null, error: null })
+  // Words the camera model knows, so people can check a word before signing it
+  const [vocab, setVocab] = useState([])
+  const [vocabQuery, setVocabQuery] = useState('')
+  const [vocabOpen, setVocabOpen] = useState(false)
+  const [referenceSign, setReferenceSign] = useState(null) // word whose training example is shown
+  useEffect(() => {
+    if (modelState.status !== 'online') return
+    fetch(`${API_BASE_URL}/labels`)
+      .then((r) => r.json())
+      .then((body) => setVocab(body.labels || []))
+      .catch(() => setVocab([]))
+  }, [modelState.status])
+  const vocabMatches = vocabQuery.trim()
+    ? vocab.filter((v) => v.label.toLowerCase().includes(vocabQuery.trim().toLowerCase()))
+    : vocab
   const modelOnlineRef = useRef(false)
   const lastModelSignRef = useRef(null)
   const lastHandSeenRef = useRef(0)
@@ -73,6 +111,34 @@ export default function CommunicatePage() {
   useEffect(() => {
     setGeneratedSentence(buildMultilingualSentence(recognizedTokens, selectedLang))
   }, [recognizedTokens, selectedLang])
+
+  useEffect(() => {
+    sentenceRef.current = generatedSentence
+  }, [generatedSentence])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('mudra.autoSpeak', autoSpeak ? 'on' : 'off')
+    } catch {
+      /* storage unavailable: the choice is just not remembered */
+    }
+  }, [autoSpeak])
+
+  // After each new word, wait for a pause (no new sign starting) and then speak the whole sentence once
+  useEffect(() => {
+    clearTimeout(autoSpeakTimerRef.current)
+    if (!autoSpeak || recognizedTokens.length === 0) return undefined
+    autoSpeakTimerRef.current = setTimeout(() => {
+      const text = sentenceRef.current
+      if (text && text !== lastSpokenRef.current) speakText(text)
+    }, AUTO_SPEAK_PAUSE_MS)
+    return () => clearTimeout(autoSpeakTimerRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recognizedTokens, autoSpeak])
+
+  const replaceLastToken = useCallback((sign) => {
+    setRecognizedTokens((prev) => (prev.length ? [...prev.slice(0, -1), sign] : [sign]))
+  }, [])
 
   const commitToken = useCallback((sign) => {
     setRecognizedTokens((prev) => (prev.length > 0 && prev[prev.length - 1] === sign ? prev : [...prev, sign]))
@@ -87,29 +153,42 @@ export default function CommunicatePage() {
     signRecognizer.onPrediction = (p) => {
       if (isPausedRef.current) return
       const top = p.top_k?.[0]
-      const ok = p.status === 'ok'
+      // Fully automatic: a confident result is added; an unsure one is added too (its best guess) when the
+      // model gives it at least AUTO_ADD_MIN, with the runner-ups offered as optional one-tap replacements.
+      const confident = p.status === 'ok'
+      const unsure = !confident && (p.status === 'uncertain' || p.status === 'no_sign') &&
+        (p.stats?.hand_rate ?? 1) >= 0.5 && top && top.confidence >= AUTO_ADD_MIN
+      const added = confident ? { sign: p.sign, label: p.label } : unsure ? { sign: top.sign, label: top.label } : null
       setCurrentDetection({
-        sign: ok ? p.sign : 'UNKNOWN',
-        label: ok ? p.label : null,
+        sign: added ? added.sign : 'UNKNOWN',
+        label: added ? added.label : null,
         candidate: top ? top.label : null,
-        confidence: Math.round(p.confidence * 100),
-        isUnknown: !ok,
-        status: p.status,
-        source: 'model',
-        metadata: ok ? findISLLexiconItem(p.sign) : null
+        confidence: Math.round((confident ? p.confidence : top?.confidence ?? 0) * 100),
+        isUnknown: !added,
+        status: confident ? 'ok' : unsure ? 'unsure' : (p.stats?.hand_rate ?? 0) >= 0.5 ? 'missed' : p.status,
+        source: p.custom ? 'custom' : 'model',
+        metadata: added ? findISLLexiconItem(added.sign) : null
       })
-      // The server classified one complete sign (start -> end), so a confident result is committed once
-      if (ok) commitToken(p.sign)
-      // Uncertain: offer the top 3 instead of guessing (look-alike signs, unclear signing)
-      setSuggestions(p.status === 'uncertain' ? (p.top_k || []).slice(0, 3) : [])
+      // The server classified one complete sign (start -> end), so each sign adds at most one word
+      if (added) commitToken(added.sign)
+      // Unsure: the other likely words can replace the one just added (optional, nothing to click otherwise)
+      setSuggestions(unsure ? (p.top_k || []).slice(1, 3) : [])
     }
     signRecognizer.onProvisional = (guess) => {
       if (isPausedRef.current) return
       setCurrentDetection((prev) => (prev.status === 'signing' ? { ...prev, candidate: guess.label } : prev))
     }
     signRecognizer.onActivity = (state) => {
-      if (isPausedRef.current || state !== 'signing') return
-      setCurrentDetection({ sign: 'UNKNOWN', confidence: 0, isUnknown: true, status: 'signing', source: 'model', metadata: null })
+      if (isPausedRef.current) return
+      if (state === 'signing') {
+        clearTimeout(autoSpeakTimerRef.current) // still signing: the sentence is not finished
+        setCurrentDetection({ sign: 'UNKNOWN', confidence: 0, isUnknown: true, status: 'signing', source: 'model', metadata: null })
+      } else if (state === 'idle') {
+        // too short to be a sign: go back to waiting instead of staying on "Signing…"
+        setCurrentDetection((prev) => (prev.status === 'signing'
+          ? { sign: 'UNKNOWN', confidence: 0, isUnknown: true, status: 'too_short', source: 'model', metadata: null }
+          : prev))
+      }
     }
     signRecognizer.connect()
     return () => {
@@ -209,6 +288,33 @@ export default function CommunicatePage() {
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef(null)
 
+  const fpsShownAtRef = useRef(0)
+  function setTrackerFpsThrottled(fps) {
+    const now = performance.now()
+    if (now - fpsShownAtRef.current < 1000) return
+    fpsShownAtRef.current = now
+    setTrackerFps(Math.round(fps))
+  }
+
+  // Framing check over ~2 s windows: shoulders visible, and room below them for the hands
+  function updateFraming(results) {
+    const f = framingRef.current
+    const pose = results.poseLandmarks
+    const ls = pose?.[11]
+    const rs = pose?.[12]
+    const visible = (pt) => pt && (pt.visibility ?? 1) >= 0.5 && pt.x >= 0 && pt.x <= 1 && pt.y >= 0 && pt.y <= 1
+    f.frames += 1
+    if (!visible(ls) || !visible(rs)) {
+      f.noShoulders += 1
+    } else if (Math.abs(ls.x - rs.x) > FRAMING.maxShoulderWidth || (ls.y + rs.y) / 2 > FRAMING.maxShoulderY) {
+      f.tooClose += 1
+    }
+    if (f.frames >= 60) {
+      setFraming(f.noShoulders > 0.5 * f.frames ? 'no_shoulders' : f.tooClose > 0.5 * f.frames ? 'too_close' : null)
+      framingRef.current = { frames: 0, noShoulders: 0, tooClose: 0 }
+    }
+  }
+
   // Handle MediaPipe tracking results
   const handleMediaPipeResults = useCallback((results) => {
     if (isPausedRef.current) return
@@ -221,6 +327,8 @@ export default function CommunicatePage() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0
+    updateFraming(results)
+    if (results.fps) setTrackerFpsThrottled(results.fps)
     handTracker.drawPose(ctx, results.poseLandmarks, canvas.width, canvas.height, true)
     if (hasHands) {
       results.multiHandLandmarks.forEach((landmarks) => {
@@ -325,12 +433,15 @@ export default function CommunicatePage() {
     resetExpression('ready')
   }
 
-  const handleSpeakSentence = () => {
-    if (!generatedSentence) return
+  const handleSpeakSentence = () => speakText(generatedSentence)
+
+  function speakText(text) {
+    if (!text) return
+    lastSpokenRef.current = text
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(generatedSentence)
+      const utterance = new SpeechSynthesisUtterance(text)
       
       // Use localized Indian voice locales for rich audio synthesis
       if (selectedLang === 'hi') {
@@ -354,6 +465,7 @@ export default function CommunicatePage() {
   }
 
   const handleClearBuffer = () => {
+    lastSpokenRef.current = ''
     setRecognizedTokens([])
     setGeneratedSentence('')
     lastCommittedSignRef.current = null
@@ -553,6 +665,20 @@ export default function CommunicatePage() {
                 </div>
               )}
 
+              {cameraActive && !framing && trackerFps > 0 && trackerFps < LOW_FPS && (
+                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-md rounded-2xl bg-amber-400/95 px-4 py-2.5 text-center text-sm font-semibold text-amber-950 shadow-lg">
+                  Camera tracking is slow ({trackerFps} fps). Close other tabs or apps using the camera or GPU for smoother recognition.
+                </div>
+              )}
+
+              {cameraActive && framing && (
+                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-md rounded-2xl bg-amber-400/95 px-4 py-2.5 text-center text-sm font-semibold text-amber-950 shadow-lg">
+                  {framing === 'no_shoulders'
+                    ? 'Move back so both shoulders are in view: recognition needs your upper body.'
+                    : 'Move back a little: your chest and both hands should stay in view while you sign.'}
+                </div>
+              )}
+
               {/* Status Header */}
               <div className="flex items-center justify-between z-20">
                 <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-xs">
@@ -564,7 +690,7 @@ export default function CommunicatePage() {
                   <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-xs font-mono text-mudra-peach-300">
                     <span>
                       {currentDetection.source === 'model'
-                        ? `Model${currentDetection.latencyMs ? ` · ${currentDetection.latencyMs} ms` : ''}`
+                        ? `Model · ${trackerFps} fps`
                         : currentDetection.source === 'manual'
                         ? 'Manual entry'
                         : `Rules · ${currentDetection.confidence ?? 0}%`}
@@ -614,6 +740,9 @@ export default function CommunicatePage() {
                 <span className="font-bold text-mudra-indigo-900 font-display">
                   {modelState.status === 'online' ? 'Add a word manually:' : 'Verified Signs (Hold in camera or click to add):'}
                 </span>
+                {modelState.status === 'online' && (
+                  <span className="text-[10px] text-mudra-indigo-500">Not recognised from the camera yet: teach them on the Record page</span>
+                )}
                 <span className="text-[10px] text-mudra-indigo-500 font-mono">8 Signs</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -630,6 +759,62 @@ export default function CommunicatePage() {
                 ))}
               </div>
             </div>
+
+            {modelState.status === 'online' && vocab.length > 0 && (
+              <div className="glass-card rounded-2xl p-4 border border-mudra-lavender-200/80 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setVocabOpen((o) => !o)}
+                  className="w-full flex items-center justify-between text-xs font-bold text-mudra-indigo-900 font-display"
+                >
+                  <span>What can I sign? {vocab.length} words the camera recognises</span>
+                  <span className="font-mono text-mudra-indigo-500">{vocabOpen ? 'hide' : 'show'}</span>
+                </button>
+                {vocabOpen && (
+                  <>
+                    <input
+                      value={vocabQuery}
+                      onChange={(e) => setVocabQuery(e.target.value)}
+                      placeholder="Search a word, e.g. water"
+                      className="w-full rounded-xl border border-mudra-lavender-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-mudra-indigo-400"
+                    />
+                    <div className="max-h-48 overflow-y-auto flex flex-wrap gap-1.5">
+                      {vocabMatches.slice(0, 400).map((v) => (
+                        <button
+                          key={v.sign}
+                          type="button"
+                          disabled={!v.has_reference}
+                          onClick={() => setReferenceSign(v.sign)}
+                          title={v.test_clips ? `Tested: ${v.test_correct}/${v.test_clips} correct` : undefined}
+                          className={`px-2 py-0.5 rounded-full border text-xs ${referenceSign === v.sign
+                            ? 'bg-mudra-indigo-700 border-mudra-indigo-700 text-white'
+                            : 'bg-white border-mudra-lavender-200 text-mudra-indigo-900 hover:bg-mudra-lavender-50'} disabled:cursor-default`}
+                        >
+                          {v.label}
+                        </button>
+                      ))}
+                      {vocabMatches.length === 0 && (
+                        <span className="text-xs text-mudra-indigo-600">
+                          Not in the model yet. Teach it on the Record page (5 recordings) and it works here straight away.
+                        </span>
+                      )}
+                    </div>
+                    {referenceSign && (
+                      <SignReference
+                        sign={referenceSign}
+                        testCorrect={vocab.find((v) => v.sign === referenceSign)?.test_correct}
+                        testClips={vocab.find((v) => v.sign === referenceSign)?.test_clips}
+                        onClose={() => setReferenceSign(null)}
+                      />
+                    )}
+                    <p className="text-[11px] text-mudra-indigo-600">
+                      Tap a word to see how the model expects it to be signed. Sign one word from start to finish, then
+                      lower your hands. Stand so your shoulders and both hands are in view.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right: Interpretation Panel & Speech Out */}
@@ -650,6 +835,10 @@ export default function CommunicatePage() {
                   }`}>
                     {currentDetection.source === 'manual'
                       ? 'Added manually'
+                      : currentDetection.source === 'custom' && !currentDetection.isUnknown
+                      ? 'Your recorded word'
+                      : currentDetection.status === 'unsure'
+                      ? `Added, unsure · ${currentDetection.confidence}%`
                       : currentDetection.status === 'uncertain'
                       ? `Uncertain · ${currentDetection.confidence}%`
                       : currentDetection.status === 'signing'
@@ -667,7 +856,11 @@ export default function CommunicatePage() {
                     currentDetection.isUnknown ? 'text-mudra-indigo-600 italic' : 'text-mudra-indigo-950'
                   }`}>
                     {currentDetection.isUnknown
-                      ? (currentDetection.status === 'uncertain' ? 'Not sure yet' : currentDetection.status === 'signing' ? 'Signing…' : 'Scanning...')
+                      ? (currentDetection.status === 'uncertain' ? 'Not sure yet'
+                        : currentDetection.status === 'missed' ? "Didn't catch that"
+                        : currentDetection.status === 'signing' ? 'Signing…'
+                        : currentDetection.status === 'too_short' ? 'Too short, sign again'
+                        : 'Waiting for a sign')
                       : (currentDetection.label || readableSign(currentDetection.sign))}
                   </span>
                 </div>
@@ -676,14 +869,23 @@ export default function CommunicatePage() {
                     Looks like <strong>{currentDetection.candidate}</strong>… (finish the sign and lower your hands)
                   </p>
                 )}
+                {!currentDetection.isUnknown && currentDetection.sign && currentDetection.sign !== 'UNKNOWN' && (
+                  <button
+                    type="button"
+                    onClick={() => { setVocabOpen(true); setReferenceSign(currentDetection.sign) }}
+                    className="mt-1 text-xs font-semibold text-mudra-indigo-700 underline hover:text-mudra-indigo-900"
+                  >
+                    See how "{currentDetection.label || readableSign(currentDetection.sign)}" is signed
+                  </button>
+                )}
                 {suggestions.length > 0 && (
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-mudra-indigo-600">Did you mean:</span>
+                    <span className="text-mudra-indigo-600">Added "{currentDetection.label}". Wrong? Replace with:</span>
                     {suggestions.map((s) => (
                       <button
                         key={s.sign}
                         type="button"
-                        onClick={() => { commitToken(s.sign); setSuggestions([]) }}
+                        onClick={() => { replaceLastToken(s.sign); setSuggestions([]) }}
                         className="px-2.5 py-1 rounded-full border border-mudra-lavender-300 bg-white font-semibold text-mudra-indigo-900 hover:bg-mudra-lavender-50"
                       >
                         {s.label} <span className="font-mono text-mudra-indigo-400">{Math.round(s.confidence * 100)}%</span>
@@ -853,6 +1055,10 @@ export default function CommunicatePage() {
               </div>
 
               {/* Action Buttons: Speak & Copy */}
+              <label className="flex items-center gap-2 text-xs font-semibold text-mudra-indigo-800 cursor-pointer select-none">
+                <input type="checkbox" checked={autoSpeak} onChange={(e) => setAutoSpeak(e.target.checked)} className="accent-mudra-indigo-700 w-4 h-4" />
+                Speak automatically when I pause ({AUTO_SPEAK_PAUSE_MS / 1000} s)
+              </label>
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   type="button"

@@ -1,6 +1,6 @@
 """Re-evaluate saved runs from their checkpoints (val calibration + test report).
 
-    python training/scripts/evaluate.py experiments/runs/include50_*
+    python training/scripts/evaluate.py experiments/runs/mudra_words_*
 """
 
 from __future__ import annotations

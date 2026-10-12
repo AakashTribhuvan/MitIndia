@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -141,3 +142,31 @@ def mirror_sequence(seq: LandmarkSequence) -> LandmarkSequence:
         timestamps_ms=seq.timestamps_ms.copy(),
         meta={**seq.meta, "mirrored": not seq.meta.get("mirrored", False)},
     )
+
+
+def fill_hand_gaps(seq: LandmarkSequence, max_gap_s: float = 0.4) -> LandmarkSequence:
+    """Interpolate a hand across short detection gaps (motion blur), bounded by detections on both sides.
+
+    Full-body videos lose the hands for a few frames during fast movement; a webcam close to the
+    signer rarely does. Filling gaps up to ``max_gap_s`` makes both look alike, in training and live.
+    """
+    n = seq.num_frames
+    if n < 3 or not seq.hand_present.any():
+        return seq
+    ts = np.asarray(seq.timestamps_ms, dtype=np.float64)
+    step = float(np.median(np.diff(ts))) if n > 1 else 0.0
+    if seq.meta.get("timestamps_are_frame_indices") or step <= 2:
+        frame_s = 1.0 / (float(seq.meta.get("fps") or 0) or 25.0)
+    else:
+        frame_s = step / 1000.0
+    max_gap = max(1, round(max_gap_s / frame_s))
+    hands, present, score = seq.hands.copy(), seq.hand_present.copy(), seq.hand_score.copy()
+    for h in range(2):
+        idx = np.flatnonzero(seq.hand_present[:, h])
+        for a, b in pairwise(idx):
+            if 1 < b - a <= max_gap + 1:
+                u = ((np.arange(a + 1, b) - a) / (b - a))[:, None, None]
+                hands[a + 1:b, h] = (1 - u) * seq.hands[a, h] + u * seq.hands[b, h]
+                present[a + 1:b, h] = True
+                score[a + 1:b, h] = min(seq.hand_score[a, h], seq.hand_score[b, h])
+    return LandmarkSequence(hands, present, score, seq.pose, seq.pose_present, seq.timestamps_ms, seq.meta)

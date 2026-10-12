@@ -1,0 +1,18 @@
+# The deployed model (isl_mudra_combined_v6_bilstm): INCLUDE pose release + INCLUDE original videos
+# (re-extracted with the browser's MediaPipe pipeline) + team words, with corrected labels.
+#     python training/scripts/train.py --config mudra_words.yaml --name mudra_words
+base: base.yaml
+
+data:
+  split_dir: data/metadata/splits/combined_words_v3
+
+features: {seq_len: 24, use_velocity: false}
+model: {temporal: bilstm}
+
+augment:
+  segment_crop_prob: 0.5   # half the samples are cut the way the live segmenter cuts a sign
+  closeup_prob: 0.4        # simulated close-up laptop-webcam framing
+
+background:                # "no sign yet" class for live use
+  prob: 0.25               # share of training samples replaced by a background sample
+  fidget_share: 0.3        # of those, synthetic face-touch / hair movements

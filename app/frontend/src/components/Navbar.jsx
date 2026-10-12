@@ -9,7 +9,8 @@ import {
   BookOpen,
   Camera,
   Activity,
-  Award
+  Award,
+  Video
 } from 'lucide-react'
 import { useAccessibility } from '../context/AccessibilityContext'
 
@@ -36,6 +37,7 @@ export default function Navbar({ activeTab, onNavigate }) {
     { id: 'learn', label: 'Learn', icon: BookOpen },
     { id: 'practice', label: 'Practice', icon: Hand, badge: 'AI Coach' },
     { id: 'progress', label: 'Progress', icon: Award },
+    { id: 'record', label: 'Record', icon: Video },
   ]
 
   const handleNavClick = (id) => {

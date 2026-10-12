@@ -1,6 +1,6 @@
 """Build a comparison table from saved runs' summary.json files (measured values only).
 
-    python training/scripts/summarize_runs.py --glob "include50_*" --title "INCLUDE-50 landmark ablation"
+    python training/scripts/summarize_runs.py --glob "include_*" --title "INCLUDE landmark ablation"
 """
 
 from __future__ import annotations

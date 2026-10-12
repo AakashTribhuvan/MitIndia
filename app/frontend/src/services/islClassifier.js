@@ -48,7 +48,7 @@ function angle3D(a, b, c) {
 /**
  * Extracts normalized hand physical biometric metrics from 21 MediaPipe landmarks
  */
-export function extractHandMetrics(landmarks) {
+function extractHandMetrics(landmarks) {
   if (!landmarks || landmarks.length < 21) return null
 
   const wrist = landmarks[0]

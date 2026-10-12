@@ -23,6 +23,12 @@ class AugmentConfig:
     hand_dropout: float = 0.05  # per-frame probability of dropping a detected hand
     temporal_crop_min: float = 0.8  # keep at least this fraction of the clip
     mirror_prob: float = 0.0  # flip clip and swap hands: teaches both dominant hands (off by default)
+    # Segment-style crop: with this probability the clip is cut the way the live segmenter cuts a sign
+    # (active span + its padding, jittered), so training samples look like what the app classifies.
+    segment_crop_prob: float = 0.0
+    segment_config: str = "training/configs/streaming.json"  # segmenter settings used for the crop
+    segment_jitter_s: float = 0.15
+    closeup_prob: float = 0.0  # view the clip through a simulated close-up webcam (datasets/camera.py)
 
     @classmethod
     def from_dict(cls, values: dict | None) -> AugmentConfig:

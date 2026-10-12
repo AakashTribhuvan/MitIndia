@@ -287,3 +287,125 @@ Phase 3 candidate: BiLSTM without velocity (best mean, best calibration); MLP+po
 - Held-out test streams (with fidgets): INCLUDE 85.2% correct / 1.8% wrong / 0 extra; team words 98.9% / 0% / 0;
   idle false words 0.10/min (INCLUDE) and 0 (team). Browser-client replay: 22/24 correct, 0 wrong.
 - UI: live "Looks like X…" while signing (never committed), "Did you mean" top-3 buttons when uncertain.
+
+### 2026-10-06: INCLUDE original videos added (C:\ISL\ISLTrainingData, 35 GB, 29 zips)
+- 2,795 INCLUDE videos (180 words, 10 categories) re-extracted with MediaPipe Tasks, i.e. the same landmark pipeline
+  the webcam uses. 109 clips set aside (hands visible in under half the frames), 14 had no twin in the pose release.
+- `align_include_video.py`: each video takes the split and group of its pose-release twin (matched on
+  category/word/file stem), so no recording crosses splits. New split set `combined_words_v2`: train 5,588 /
+  val 1,040 / test 1,495.
+- Domain gap found: the deployed model (trained on the OpenHands pose release) scored only 71.5% clip-level and
+  41.8% correct / 7.0% wrong on continuous streams of the re-extracted videos. Expect this to have been the live
+  webcam experience.
+- Retrained with identical settings (`combined_v2_bg25_fidget_bilstm`): INCLUDE pose test 96.0% (was 96.2%),
+  re-extracted video test 96.8% (was 71.5%), team words 99.4% (was 100%). Decision settings re-tuned on validation
+  streams: threshold 0.8, tta 1.
+- Held-out test streams, deployed -> new: INCLUDE pose 85.2% -> 82.0% correct (wrong 1.8% -> 2.0%);
+  team words 98.9% -> 97.8% (wrong 0% -> 0%); re-extracted video 41.8% -> 78.5% correct, wrong 7.0% -> 2.6%;
+  idle false words 0.10/min -> 0; extra words 0.
+- Deployed as `isl_mudra_combined_v2_bilstm`; the previous model is kept in `app/backend/models/`.
+- Still open: 18.9% of real-video signs are missed (left uncertain) on streams despite 96.8% clip accuracy, so the
+  segment boundaries or the confidence threshold on real video are the next thing to look at.
+
+### 2026-10-06: Real-time Phase 3, step 1: missed signs on real video
+- Diagnosis of the 94 real-video signs the v2 model missed on test streams: 40 were called "no sign" (background
+  samples included random mid-clip spans, which look like a short, quick sign), 27 were never segmented (15 of them
+  the last sign of a stream with no rest after it: a benchmark flaw), 27 were left uncertain.
+- Benchmark fix: every stream now ends with 1.5 s of rest. Corrected v2 baseline: INCLUDE pose 86.2%,
+  real video 82.1%, team words 97.8% correct.
+- Training fixes: background samples now come only from clip starts and ends; half of the training samples are cut
+  the way the live segmenter cuts a sign (active span + padding, jittered by 0.15 s; `segment_crop_prob`).
+- Model v3 (`combined_v3_segcrop_bilstm`), held-out test streams, v2 -> v3: INCLUDE pose 86.2% -> 91.3% correct
+  (wrong 1.6% -> 1.7%); real video 82.1% -> 92.6% (wrong 2.4% -> 1.8%, idle false words 0.16 -> 0/min);
+  team words 97.8% -> 97.8% (wrong 0%). Clip-level: INCLUDE pose 96.5%, real video 97.8%, team words 99.4%.
+  Decision settings unchanged after re-tuning on validation (threshold 0.8, tta 1). Deployed as
+  `isl_mudra_combined_v3_bilstm`.
+
+### 2026-10-06: Real-time Phase 3, step 3: recording tool and few-shot new words
+- Record page (frontend): name, word (the app's 8 missing words or any typed word), 3 s countdown with hands
+  down, 2-5 s capture, quality feedback (too short, hands out of view, shoulders not visible), per-word counts
+  with signers, delete bad takes. Landmarks only.
+- Backend `/recordings` (GET / POST / DELETE): `.npz` in the training format + `data/metadata/manifest_app.csv`,
+  `signer_id` = signer's name, group = signer + day. Words the model does not know become custom words at once.
+- Few-shot (`mudra_ml/fewshot.py`): prototype = mean normalised embedding (pooled sequence representation) of a
+  word's recordings; a sign is matched when cosine similarity >= 0.6 and the model's best known word is below 0.95
+  confidence (both chosen on validation, `training/configs/fewshot.json`).
+- Honest test: model trained with 25 team words held out completely (`combined_words_v2_fewshot`, known-word
+  test accuracy 97.2%). Held-out test clips, k examples per new word, 5 draws: k=1 70.1% recognised / 12.0% wrong;
+  k=3 79.5% / 11.5%; k=5 81.6% / 10.9%. Known words taken over by a custom word: 0.10-0.14%. Wrong words are
+  mostly (10.1-10.7 points) the model confidently reading the new sign as a known look-alike, which happens for
+  18.7% of new signs without custom words; retraining with the recordings is the fix.
+- Not yet verified: the Record page with a real camera and person (frontend builds; API covered by tests).
+
+### 2026-10-06: Real-time Phase 3, step 2: how well does it work on recording conditions it never saw?
+- Public multi-signer ISL word data is not directly downloadable (FDMSE-ISL: email request; CISLR: form;
+  iSign: Hugging Face login). The alphabet images in C:\ISL (100x100 px, one signer, MediaPipe finds a hand in
+  25% even upscaled) are unusable for fingerspelling; letters can be taught through the Record page instead.
+- INCLUDE has no signer IDs. The original videos were grouped into 30 recording-session clusters by appearance
+  (file-number runs + first-frame clustering); matching people across sessions would need face recognition,
+  which was not done (personal-data rule). Split `combined_words_v2_session`: 9 sessions test, 4 validation,
+  pose-release and video twins share the session group; 63 INCLUDE words appear in the test sessions.
+- Same recipe as the deployed v3 model, trained without those sessions: clip accuracy on unseen sessions 66.7%
+  (video) / 66.8% (pose release), top-5 91%, vs 96.5-97.8% on the random split. Team words on a held-out day
+  96.7%. Per word, accuracy follows the number of training sessions: 2 -> 64%, 3-4 -> 69%, 5+ -> 92% (n=12).
+- Variants on the same split: mirror 60.1%, strong geometric augmentation 64.5%, pose dropout 62.8% (better on
+  validation, 69.5%, but not on test). None beats the baseline; the gap is data coverage.
+- Streams from unseen sessions (threshold 0.8): real video 48.4% correct / 9.5% wrong, team words 91.2% / 0%.
+  Threshold sweep (video): 0.9 -> 39.3% / 5.3%; 0.95 -> 30.1% / 2.3%; 0.98 -> 44% correct on team words only.
+  Kept 0.8 for the deployed model (which is trained on all sessions); a stricter "new user" setting is an
+  option for the UI.
+- Deployed model unchanged (v3, all sessions). New augmentation option `pose_dropout` kept in the code (off).
+
+### 2026-10-06: Live-use fix: close-up webcams, missed signs, sentence flow
+- User report: signs were not added to the sentence ("Scanning..."). Cause: a laptop webcam frames the signer from
+  the chin to the chest, unlike any training video (waist up, standing back). Simulated close-up view
+  (`datasets/camera.py`: virtual 640x480 crop around head and shoulders, hands mostly outside the frame are not
+  detected, out-of-frame pose points get low visibility) dropped v3 on test streams from 92.6% to 71.3% correct
+  (real video), 97.8% -> 72.4% (team words), almost all of it missed signs.
+- v4 (`combined_v4_closeup_bilstm`): v3 recipe + close-up views for 40% of training samples
+  (`augment.closeup_prob`). Threshold re-tuned on validation streams: 0.6, tta 3. Held-out test streams,
+  normal framing: real video 92.0% / 2.4% wrong, pose release 91.9% / 2.5%, team words 98.9% / 0%.
+  Close-up framing: real video 87.6% / 3.2%, pose release 89.0% / 2.7%, team words 90.6% / 1.7% (v3: 65-72%).
+  Clip-level unchanged (96.3% / 97.0% / 99.4%). Deployed as `isl_mudra_combined_v4_bilstm`.
+- Communicate page: "Didn't catch that" + top-3 choices when a real sign is classified as no sign; no more
+  getting stuck on "Signing..." after a too-short movement; framing warning when the shoulders are not visible
+  or the camera is too close; "What can I sign?" searchable list of the model's words; the 8 quick-add words are
+  marked as not recognised from the camera yet; the sentence is spoken automatically 2.5 s after the last word
+  (toggle).
+- Backend logs one line per live sign (decision summary, never landmarks) to experiments/logs/stream_events.jsonl.
+
+### 2026-10-06: First real live session analysed (27 signs from the stream log)
+- 25 of 27 signs ended as "no sign" (background 0.69-0.998), 2 as uncertain; 20 of 27 hit the 6 s maximum
+  (hands never rested), and the camera delivered about 6 frames/s (training videos: 25-30).
+- Frame rate: the browser ran hand + pose + face landmarkers on every frame. Now pose runs every other frame, face
+  cues at 5 fps (was 12), the camera asks for 30 fps, and the page shows the tracking rate with a warning
+  below 15 fps. The sign log records fps per sign.
+- "Hands held still" end-of-sign rule (`still_s`, `still_speed` in SegmenterConfig) added and tuned on validation
+  streams in three framings (normal, close-up, close-up with hands resting in view) at 12 fps: chosen 0.8 s,
+  but on held-out test streams it lowered correct words by 3-7 points (it splits signs that contain a pause); a
+  1.2 s / 4 s-cap safety net also lost 1-5 points on validation. Left off. The simulations do not reproduce the
+  6 s segments, so the user's own recordings are needed to find their cause.
+- Velocity features (v5, v4 recipe + velocity): validation 96.6% vs 96.8%, test real video 95.4% vs 97.0%.
+  Not deployed; v4 stays.
+- Communicate page adds words fully automatically: a confident sign is added; an unsure one adds its best guess
+  when the model gives it >= 30%, with the runner-ups as optional one-tap replacements. On held-out test
+  streams this moves missed signs into correct ones (real video, close-up: correct 78.7% -> 85.1% with the
+  still rule) at the cost of 1-2 points more wrong words.
+
+### 2026-10-07: Sign-to-word check (user: "flat" shown as "Wednesday"), label audit, v6
+- Live log: the user's "flat" got WEDNESDAY at 0.42, which the new auto-add rule (>= 0.30) added; raised to 0.50.
+- Label audit (`experiments/reports/label_shift_*.json`): no video filed under two words; pose-release vs video
+  copies agree (median wrist-trajectory correlation 0.96). Cross-session nearest-neighbour check: one INCLUDE
+  session (Home, MVI_4896-4955) has folder boundaries off by one (third take of each word = next word's
+  sign); a within-session check agrees. 20 clips relabelled in both copies, plus MVI_5138 HOT -> COLD:
+  `data/metadata/splits/combined_words_v3` (`label_fixes.json`). The first attempt matched by file number
+  only and hit Colours clips with the same numbers; redone matching category + word + file.
+- Hand visibility: while the arm is raised, hands are found in 71% (INCLUDE videos) / 80% (pose release) of
+  frames vs ~99% for webcam-like team recordings (motion blur). A zoomed upper-body hand search only raised it
+  to 72-73%. Gap filling (interpolate hands over gaps <= 0.4 s) restores a median of 100%; trained as v7
+  (`features.fill_gaps_s`), but it did not beat v6 on streams, so it is off.
+- Models on the corrected labels, threshold tuned on validation streams (12 fps, normal + close-up framing):
+  mean correct / wrong, validation: v4 91.1% / 1.1%, v6 93.7% / 0.8%, v7 93.3% / 1.3%; test: v4 89.5% / 1.1%,
+  v6 92.4% / 1.6%, v7 91.7% / 1.6%. Deployed v6 (`isl_mudra_combined_v6_bilstm`, threshold 0.7, tta 1).
+- New: `/reference/{sign}` + "How to sign it" viewer (one real training example per word as a skeleton,
+  mirrored); per-word test accuracy in the model card and the word list.

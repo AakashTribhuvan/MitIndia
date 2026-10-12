@@ -1,0 +1,18 @@
+# Landmark-branch ablation (spec models B and C, plus a Transformer comparison and
+# feature/augmentation ablations). CNN ablations (A, D, E) need RGB video, which the
+# INCLUDE pose release does not contain.
+base: base.yaml
+
+variants:
+  - name: B_landmark_mlp_pool
+    model: {temporal: none}
+  - name: C_landmark_bilstm
+    model: {temporal: bilstm}
+  - name: T_landmark_transformer
+    model: {temporal: transformer, tf_dim: 192, tf_layers: 4, tf_heads: 4, tf_ff: 384, dropout: 0.2}
+  - name: C_bilstm_no_velocity
+    model: {temporal: bilstm}
+    features: {use_velocity: false}
+  - name: C_bilstm_no_augmentation
+    model: {temporal: bilstm}
+    augment: null

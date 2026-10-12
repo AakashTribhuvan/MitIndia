@@ -1,1 +1,4 @@
 *.bat text eol=crlf
+
+# Shell hooks must keep LF endings to run on Linux/macOS
+.githooks/* text eol=lf

@@ -1,7 +1,9 @@
 # MUDRA training pipeline (`mudra_ml`)
 
-Landmark-first ISL recognition. Phase 1 (this folder today) turns raw videos/images into
-normalised landmark sequences with leakage-safe splits. Model training arrives in Phase 2.
+Landmark-first ISL recognition: raw videos/images -> MediaPipe landmarks -> leakage-safe splits ->
+sequence models -> calibrated, exported models and live-use benchmarks. The live API imports this
+package, so features, segmentation and decisions are identical offline and live. Full details:
+`HANDOVER.md` at the repository root.
 
 ## Setup
 
@@ -11,7 +13,7 @@ Everything runs in the shared environment `app/backend/.venv` (Python 3.14, PyTo
 cd C:\Users\ADNAN\Desktop\Mudra_Claude_Handoff
 app\backend\.venv\Scripts\activate
 pip install -e training          # once; already done on this machine
-pytest training                  # 28 tests
+pytest training app/backend/tests   # 61 tests
 ```
 
 MediaPipe models live in `training/assets/mediapipe/` (not committed). Download links:
@@ -29,24 +31,33 @@ MediaPipe models live in `training/assets/mediapipe/` (not committed). Download 
 
 Combine sources by passing several manifests to `make_splits.py`.
 
-## Phase 2: models, training, evaluation
+Signs recorded in the app (Record page) are already landmarks: they are in
+`data/metadata/manifest_app.csv`, grouped by session (signer + day) with the signer's name in
+`signer_id`. Add them to a training run with
+`make_splits.py --manifests ... data/metadata/manifest_app.csv --name <name>`.
+
+Few-shot benchmark for new words: `eval_fewshot.py --model <model trained without some words>
+--split-dir <split set with novel.csv>`; it tunes `training/configs/fewshot.json` on validation.
+
+## Models, training, evaluation
 
 | Task | Command |
 |---|---|
-| Train one model | `python training/scripts/train.py --config base.yaml --name include50_bilstm` |
+| Train the deployed model | `python training/scripts/train.py --config mudra_words.yaml --name mudra_words` |
 | Change settings | `... --set data.split_dir=data/metadata/splits/include model.temporal=transformer train.epochs=200` |
-| Ablation table | `python training/scripts/run_ablation.py --config ablation_landmarks.yaml --tag include50` |
+| Ablation table (INCLUDE) | `python training/scripts/run_ablation.py --config ablation_landmarks.yaml --tag include` |
 | Watch training | `tensorboard --logdir experiments/runs` |
 | Re-score saved runs | `python training/scripts/evaluate.py experiments/runs/include_*` |
 | Comparison table | `python training/scripts/summarize_runs.py --glob "include_*" --title "INCLUDE"` |
-| Live-use (streaming) test | `python training/scripts/eval_streaming.py --model <exported dir> --split <split>/test.csv --window-s 4` |
+| Live-use (streaming) test | `python training/scripts/eval_continuous.py --model <exported dir> --split <split>/test.csv --scenarios normal,closeup --fps-cap 12` |
+| Tune the commit threshold | `... eval_continuous.py --split <split>/val.csv --tune-threshold-only --config-out <streaming.json>` |
 | Test on another dataset | `python training/scripts/eval_external.py --model <exported dir> --manifest <manifest.csv>` |
-| Ship a model to the API | `python training/scripts/export_model.py --run experiments/runs/<run> --name <model_name>` |
+| Ship a model to the API | `python training/scripts/export_model.py --run experiments/runs/<run> --name <model_name> --data-source combined` |
 
 Models (`mudra_ml/models/sequence_model.py`): per-frame **Landmark MLP** -> temporal block
-(`none` = mean pooling, `bilstm`, `transformer`) -> attention pooling -> classifier. An optional
-appearance input (`appearance_dim`) takes per-frame **CNN** features (`cnn_encoder.py`, ResNet18 /
-MobileNetV3, freeze / unfreeze-last-block) for the hybrid models once RGB video is available.
+(`none` = mean pooling, `bilstm`, `transformer`) -> attention pooling -> classifier. The deployed
+model is the BiLSTM (2.6 M parameters). An RGB CNN branch was planned in the original spec but
+never used, and has been removed.
 
 Each run writes `experiments/runs/<name>_<time>/`:
 `config.yaml`, `history.csv`, `tensorboard/`, `best.pt` (weights + classes + model/feature config +

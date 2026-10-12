@@ -11,6 +11,7 @@ import torch
 from torch.utils.data import Dataset
 
 from mudra_ml import schema
+from mudra_ml.config import project_path
 from mudra_ml.data.manifest import read_manifest
 from mudra_ml.datasets.augment import AugmentConfig, affine_jitter, temporal_window
 from mudra_ml.preprocessing.frame_sampler import sample_indices
@@ -33,14 +34,15 @@ class BackgroundConfig:
     """Synthetic "no sign yet" samples for live use.
 
     With probability ``prob`` a training sample is replaced by a piece of a random clip that is
-    too short to contain the whole sign: either its opening (rest + start of the sign) or a
-    random short span. The model learns to answer BACKGROUND until it has seen most of a sign.
+    too short to contain the whole sign: its opening (rest + start of the sign) or its ending
+    (end of the sign + rest). Spans from the middle of a clip are not used: a short, quick sign
+    cut by the live segmenter looks just like one, and the model must not call it BACKGROUND.
     """
 
     prob: float = 0.0
     min_fraction: float = 0.1
     max_fraction: float = 0.4
-    onset_share: float = 0.5  # share of background samples taken from the start of a clip
+    onset_share: float = 0.5  # share of background samples taken from the start of a clip (the rest from its end)
     fidget_share: float = 0.0  # share of background samples that are synthetic face-touch / hair movements
 
     @classmethod
@@ -109,13 +111,20 @@ def sequence_features(
     feature_cfg: FeatureConfig,
     rng: np.random.Generator | None = None,
     augment: AugmentConfig | None = None,
+    window: tuple[int, int] | None = None,
 ) -> np.ndarray:
-    """Sample ``seq_len`` frames, optionally augment, and build unstandardised features."""
+    """Sample ``seq_len`` frames, optionally augment, and build unstandardised features.
+
+    ``window`` = (start, length) fixes the frame span to use instead of a random temporal crop.
+    """
     if augment is not None and rng is not None and augment.mirror_prob > 0 and rng.random() < augment.mirror_prob:
         seq = mirror_sequence(seq)
     width, height = int(seq.meta.get("width", 0)), int(seq.meta.get("height", 0))
     n = seq.num_frames
-    if augment is not None and rng is not None:
+    if window is not None and rng is not None:
+        start, length = window
+        idx = start + sample_indices(length, feature_cfg.seq_len, mode="random", rng=rng)
+    elif augment is not None and rng is not None:
         start, length = temporal_window(n, augment, rng)
         idx = start + sample_indices(length, feature_cfg.seq_len, mode="random", rng=rng)
     else:
@@ -160,6 +169,45 @@ class ISLLandmarkDataset(Dataset):
         self.labels = np.array([self.class_to_idx[r.label] for r in self.rows], dtype=np.int64)
         self.mean = np.zeros(feature_cfg.feature_dim, dtype=np.float32)
         self.std = np.ones(feature_cfg.feature_dim, dtype=np.float32)
+        self._segment_bounds: list[tuple[int, int, float] | None] | None = None
+
+    def segment_bounds(self) -> list[tuple[int, int, float] | None]:
+        """(first active frame, last active frame, fps) per clip under the live segmenter's activity rule."""
+        if self._segment_bounds is None:
+            from mudra_ml.streaming import SegmenterConfig  # lazy: streaming imports this module
+
+            self._segment_cfg = SegmenterConfig.load(project_path(self.augment.segment_config) if self.augment else None)
+            self._segment_bounds = [self._active_bounds(seq) for seq in self.sequences]
+        return self._segment_bounds
+
+    def _active_bounds(self, seq: LandmarkSequence) -> tuple[int, int, float] | None:
+        from mudra_ml.streaming import Frame, SignSegmenter
+
+        fps = float(seq.meta.get("fps") or 0) or 25.0
+        seg = SignSegmenter(self._segment_cfg, int(seq.meta.get("width", 0)) or 1, int(seq.meta.get("height", 0)) or 1)
+        active = [
+            seg._activity(Frame(i / fps, seq.hands[i], seq.hand_present[i], seq.pose[i], bool(seq.pose_present[i])))
+            for i in range(seq.num_frames)
+        ]
+        idx = np.flatnonzero(active)
+        return (int(idx[0]), int(idx[-1]), fps) if len(idx) else None
+
+    def _segment_window(self, i: int, seq: LandmarkSequence | None = None) -> tuple[int, int] | None:
+        """Frame window cut like the live segmenter would cut this sign (padding + jitter), or None.
+
+        ``seq`` = a re-framed view of clip ``i`` (close-up camera): its bounds are computed afresh.
+        """
+        bounds = self.segment_bounds()  # also loads the segmenter settings
+        found = bounds[i] if seq is None else self._active_bounds(seq)
+        if found is None:
+            return None
+        a, b, fps = found
+        cfg = self._segment_cfg
+        j = self.augment.segment_jitter_s
+        n = self.sequences[i].num_frames
+        start = int(np.clip(round((a / fps - cfg.pad_pre_s + self.rng.uniform(-j, j)) * fps), 0, n - 1))
+        end = int(np.clip(round((b / fps + cfg.pad_post_s + self.rng.uniform(-j, j)) * fps) + 1, start + 4, n))
+        return start, end - start
 
     def compute_stats(self) -> tuple[np.ndarray, np.ndarray]:
         """Per-feature mean and per-block std from un-augmented clips (training split only)."""
@@ -189,20 +237,33 @@ class ISLLandmarkDataset(Dataset):
         n = seq.num_frames
         length = max(4, round(n * self.rng.uniform(cfg.min_fraction, cfg.max_fraction)))
         length = min(length, n)
-        start = 0 if self.rng.random() < cfg.onset_share else int(self.rng.integers(0, n - length + 1))
+        start = 0 if self.rng.random() < cfg.onset_share else n - length
         sl = slice(start, start + length)
         return LandmarkSequence(
             seq.hands[sl], seq.hand_present[sl], seq.hand_score[sl], seq.pose[sl], seq.pose_present[sl],
             seq.timestamps_ms[sl], seq.meta,
         )
 
+    def _maybe_closeup(self, seq: LandmarkSequence) -> LandmarkSequence | None:
+        if self.augment is None or self.augment.closeup_prob <= 0 or self.rng.random() >= self.augment.closeup_prob:
+            return None
+        from mudra_ml.datasets.camera import CloseupParams, closeup_view
+
+        view = closeup_view(seq, CloseupParams.sample(self.rng))
+        return view if view is not None and view.hand_present.any() else None
+
     def __getitem__(self, i: int) -> tuple[torch.Tensor, int]:
         if self.background is not None and self.rng.random() < self.background.prob:
             seq, label = self._background_window(), self.class_to_idx[BACKGROUND_LABEL]
+            seq = self._maybe_closeup(seq) or seq
             feats = sequence_features(seq, self.feature_cfg, self.rng, self.augment)
             feats = np.clip(feats, -self.feature_cfg.clip_value, self.feature_cfg.clip_value)
             return torch.from_numpy((feats - self.mean) / self.std), label
-        feats = sequence_features(self.sequences[i], self.feature_cfg, self.rng, self.augment)
+        view = self._maybe_closeup(self.sequences[i])
+        window = None
+        if self.augment is not None and self.augment.segment_crop_prob > 0 and self.rng.random() < self.augment.segment_crop_prob:
+            window = self._segment_window(i, view)
+        feats = sequence_features(view or self.sequences[i], self.feature_cfg, self.rng, self.augment, window=window)
         feats = np.clip(feats, -self.feature_cfg.clip_value, self.feature_cfg.clip_value)
         feats = (feats - self.mean) / self.std
         return torch.from_numpy(feats), int(self.labels[i])

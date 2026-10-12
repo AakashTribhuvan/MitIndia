@@ -13,7 +13,7 @@ so x is divided by vid_shape[0] and y by vid_shape[1], and the true frame is wid
 The official train/test split is preserved (test rows are pre-assigned to "test").
 INCLUDE has no signer IDs, so groups are per clip and the split is not signer-independent.
 
-    python training/scripts/convert_include_pose.py --variant include50
+    python training/scripts/convert_include_pose.py --variant include
 """
 
 from __future__ import annotations

@@ -1,0 +1,864 @@
+# MUDRA: Handover Document
+
+> **Read this first.** This is the single source of truth for anyone (human or AI model) taking over
+> MUDRA. It describes the architecture, interfaces, data, models, results, open problems and the
+> history of decisions. It is updated at **every push**: see [Section 0](#0-how-to-use-and-update-this-document).
+
+| Field | Value |
+|---|---|
+| Document version | 2 |
+| Last updated | 2026-10-12 |
+| Last updated at commit | first commit on `github.com/Addy-coder786/Mudra` after `21086c0` (see Section 21) |
+| Deployed model | `app/backend/models/isl_mudra_combined_v6_bilstm` (314 words + `_BACKGROUND_`) |
+| Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
+| Tests | 61 passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) |
+| Repository | `https://github.com/Addy-coder786/Mudra` (remote `mudra`); older pushes: `Addy-coder786/ISL_Addy` (remote `origin`) |
+| Overall state | Recognition is accurate on held-out recordings; **live use on a real laptop webcam is not yet reliable** (Section 16) |
+
+---
+
+## Table of contents
+
+0. [How to use and update this document](#0-how-to-use-and-update-this-document)
+1. [Project summary, goals and constraints](#1-project-summary-goals-and-constraints)
+2. [Current state at a glance](#2-current-state-at-a-glance)
+3. [Repository map](#3-repository-map)
+4. [System architecture](#4-system-architecture)
+5. [Live recognition: end-to-end data flow](#5-live-recognition-end-to-end-data-flow)
+6. [Interfaces: HTTP API, WebSocket protocol, configuration](#6-interfaces-http-api-websocket-protocol-configuration)
+7. [Landmarks and the feature vector](#7-landmarks-and-the-feature-vector)
+8. [The recognition model](#8-the-recognition-model)
+9. [Sign segmentation and the commit decision](#9-sign-segmentation-and-the-commit-decision)
+10. [Recording tool and few-shot custom words](#10-recording-tool-and-few-shot-custom-words)
+11. [Training pipeline](#11-training-pipeline)
+12. [Data: sources, splits, label fixes, licences](#12-data-sources-splits-label-fixes-licences)
+13. [Evaluation methodology and current results](#13-evaluation-methodology-and-current-results)
+14. [Model version history](#14-model-version-history)
+15. [Experiments tried and not adopted](#15-experiments-tried-and-not-adopted)
+16. [Known issues and open problems](#16-known-issues-and-open-problems)
+17. [Environment, setup and running](#17-environment-setup-and-running)
+18. [Tests](#18-tests)
+19. [Rules and conventions](#19-rules-and-conventions)
+20. [Glossary](#20-glossary)
+21. [Change log (newest first)](#21-change-log-newest-first)
+
+---
+
+## 0. How to use and update this document
+
+### For an AI model or engineer taking over
+
+1. Read Sections 1, 2 and 16 to know what works, what does not and what is next.
+2. Read Sections 4-10 before touching runtime code, and 11-13 before touching training or claims.
+3. Never report a metric that is not in this document or produced by a script in this repo
+   (Section 19). Numbers here are **held-out test** numbers unless labelled otherwise.
+4. File paths are relative to the repository root. Code is the authority: if this document and
+   the code disagree, the code wins and this document must be corrected in the same push.
+
+### Update protocol (mandatory at every push)
+
+Before every `git push`, the person or model pushing must:
+
+1. Add an entry at the top of [Section 21](#21-change-log-newest-first) with: date, short commit
+   hash(es), what changed, why, and measured effect (with the split it was measured on).
+2. Update every other section the change affects. Typical mapping:
+
+   | If you changed | Update sections |
+   |---|---|
+   | The deployed model or its training recipe | header table, 2, 8, 11, 13, 14 |
+   | `training/configs/streaming.json` or `mudra_ml/streaming.py` | 9, 13 |
+   | An API endpoint, request/response field or WebSocket event | 6 |
+   | The feature layout, normalisation or `schema.py` | 7 (and retrain) |
+   | Data, manifests or split sets | 12 |
+   | Something tried and rejected | 15 |
+   | A bug found or fixed, a new limitation | 16 |
+   | Setup, dependencies, ports | 17 |
+   | Tests added or removed | 18, header test count |
+   | Files added, moved or removed | 3 |
+
+3. Bump "Document version", "Last updated" and "Last updated at commit" in the header table.
+4. The repo ships a pre-push hook (`.githooks/pre-push`) that refuses a push whose commits do not
+   touch `HANDOVER.md`. Enable it once per clone: `git config core.hooksPath .githooks`.
+   Bypass only for trivial pushes (typo fixes) with `SKIP_HANDOVER_CHECK=1 git push`.
+
+---
+
+## 1. Project summary, goals and constraints
+
+**MUDRA** is an Indian Sign Language (ISL) learning and communication web app:
+
+- **Sign → text → speech** (Communicate page): the webcam watches the signer; each isolated sign is
+  recognised, appended to a sentence, the sentence is translated (English / Hindi / Marathi) and
+  spoken with the browser's speech synthesis.
+- **Text / speech → sign** (Communicate, Learn): a 3D avatar (Three.js, `ybot.glb`) performs
+  26 letters and 13 words.
+- **Learning and practice** (Learn, Practice, Progress): lessons and a rule-based coach for 8 signs,
+  with locally stored practice history.
+- **Recording** (Record): users record signs (landmarks only) to teach new words and to collect
+  training data with signer names.
+
+**Primary goal (current):** reliable real-time recognition in actual use: detect when a sign starts
+and ends, never commit a word from one or two frames, recognise the signs the model was trained on,
+build a sentence and speak it.
+
+**Hard constraints carried from the original specs** (`docs/planning/`, original implementation specs):
+
+- Only landmark coordinates leave the browser; never camera images or video.
+- No emotion claims: the facial module describes facial *cues* ("smiling", "eyebrows raised"), not
+  feelings, and is labelled experimental.
+- No fabricated metrics anywhere in the app or docs.
+- Evaluate with signer- or session-independent splits where possible; never tune on test data.
+- No Random-Forest classifier as the recogniser (the original app used one at ~44%).
+- Urgency / context features would need an explicit user confirmation UI (not built yet).
+
+**Origin.** The project merges the "MUDRA handoff package" with the team's GitHub repo
+(`aryanhinge20-dot/Mudra_ISL_Platform`, site `mudra-isl.vercel.app`). The team's own data lives at
+`C:\ISL` on the development machine (Section 12). Previous pushes went to
+`https://github.com/Addy-coder786/ISL_Addy` (remote `origin`).
+
+---
+
+## 2. Current state at a glance
+
+| Area | State | Evidence |
+|---|---|---|
+| Web app (Home, Communicate, Learn, Practice, Progress, Record) | Working | builds with `vite build`; pages load |
+| Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13) |
+| Continuous-stream recognition (simulated live use) | Working in benchmark | 90-98% correct, 0-2.2% wrong on held-out streams |
+| Close-up laptop-webcam framing | Handled in benchmark | 90.0-90.6% correct (simulated close-up) |
+| New recording sessions / new people | Weak | 66.7% clip accuracy on unseen INCLUDE sessions |
+| **Real live use (developer's webcam)** | **Failing** | last session: 0 of 11 signs recognised; ~6.5 fps tracking; most signs hit the 6 s cap |
+| Few-shot new words (Record page) | Working | 79.5% recognised from 3 examples, 0.14% of known words taken over |
+| App words NAMASTE, WATER, HELP, YES, NO, GOODBYE, HOME, PERSON | Not in the model | no training data; can be recorded on the Record page |
+| Practice-page coach | Rule-based, 8 signs | `islClassifier.js`; not the trained model |
+| Sentence-level recognition | Not available | a 101-sentence experiment reached 57% top-1 and was dropped |
+
+---
+
+## 3. Repository map
+
+```
+.
+├── HANDOVER.md                 this document (update at every push)
+├── AGENTS.md / CLAUDE.md       short pointers for AI coding tools -> HANDOVER.md
+├── README.md                   public overview, quick start, results
+├── start_all.bat               Windows launcher: creates .venv, installs deps, starts both servers
+├── .env.example                backend environment variables (all optional)
+├── .githooks/pre-push          refuses pushes that do not update HANDOVER.md
+├── app/
+│   ├── backend/
+│   │   ├── main.py             entry point (uvicorn; port from MUDRA_PORT, default 8000)
+│   │   ├── requirements.txt    pinned Python deps (backend + training share one venv; CUDA 12.8 torch)
+│   │   ├── mudra_api/
+│   │   │   ├── app.py          FastAPI factory: /health /labels /model /reference /predict /recordings /stream
+│   │   │   ├── settings.py     Settings dataclass from MUDRA_* environment variables
+│   │   │   ├── schemas.py      Pydantic models for /predict
+│   │   │   ├── recognizer.py   SignRecognizer: one-clip prediction for /predict; readable() labels
+│   │   │   ├── recordings.py   RecordingStore: saves Record-page signs (.npz + manifest_app.csv), custom-word bank
+│   │   │   └── references.py   ReferenceClips: one real training example per word for /reference
+│   │   ├── models/isl_mudra_combined_v6_bilstm/   model.pt (state dict) + model_card.json
+│   │   └── tests/              test_api.py (API, streaming, recordings, references), conftest.py
+│   └── frontend/               React 18 + Vite 6 + Tailwind 3 + Three.js
+│       ├── public/models/      hand_landmarker.task, pose_landmarker_lite.task, face_landmarker.task
+│       ├── public/wasm/        MediaPipe Tasks Vision WASM runtime (served locally)
+│       ├── public/ybot.glb     avatar model; public/assets/mudra-intro.mp4 intro video
+│       └── src/
+│           ├── App.jsx, main.jsx, index.css    tab-based routing (no URL router)
+│           ├── pages/          HomePage, CommunicatePage, LearnPage, PracticePage, ProgressPage, RecordPage
+│           ├── components/     Navbar, Footer, IntroLoader, AccessibilityModal, SignReference,
+│           │                   avatar/MudraAvatarViewer, home/* (8 landing-page sections)
+│           ├── context/AccessibilityContext.jsx   high contrast, reduced motion, font size, speech rate
+│           ├── avatar/         useAvatarRenderer.js + Animations/ (26 Alphabets, 13 Words, defaultPose)
+│           └── services/
+│               ├── handTracker.js          MediaPipe HandLandmarker + PoseLandmarker on the webcam
+│               ├── signRecognizer.js       WebSocket client for /stream; exports toFrame, API_BASE_URL
+│               ├── recordingClient.js      /recordings client
+│               ├── faceExpressionTracker.js, expressionAnalyzer.js   facial cues (experimental, 5 fps)
+│               ├── islClassifier.js        rule-based matcher for 8 coachable signs (Practice, offline fallback)
+│               ├── islDictionary.js        lexicon, readableSign, multilingual sentence builder
+│               └── progressStore.js        practice history in localStorage
+├── training/
+│   ├── pyproject.toml          installs package mudra_ml (editable, from training/src)
+│   ├── configs/
+│   │   ├── data.yaml           paths, extraction settings, split ratios
+│   │   ├── streaming.json      live segmenter + commit settings (read by the API and benchmarks)
+│   │   ├── fewshot.json        custom-word matching limits
+│   │   └── experiments/        base.yaml, mudra_words.yaml (deployed recipe), ablation_landmarks.yaml
+│   ├── src/mudra_ml/
+│   │   ├── schema.py           landmark counts, indices, feature dimensions (FRAME_FEATURE_DIM = 162)
+│   │   ├── config.py           PROJECT_ROOT, load_config, project_path
+│   │   ├── streaming.py        SignSegmenter, ModelBundle, StreamingRecognizer (shared by API + benchmarks)
+│   │   ├── fewshot.py          CustomWordBank, FewShotConfig
+│   │   ├── preprocessing/      landmark_extractor.py, sequence.py, normalization.py, frame_sampler.py
+│   │   ├── data/               manifest.py (ManifestRow, discovery, labels), splits.py (grouped splits, leakage check)
+│   │   ├── datasets/           isl_dataset.py, augment.py, camera.py (close-up view), distractors.py (fidgets)
+│   │   ├── models/             landmark_mlp.py, sequence_model.py
+│   │   ├── training/           trainer.py (run_experiment), experiment_config.py (YAML merge)
+│   │   └── evaluation/         metrics.py, evaluate.py
+│   ├── scripts/                command-line tools (Section 11)
+│   └── tests/                  unit and end-to-end tests
+├── data/
+│   ├── README.md               data layout, sources, how to rebuild landmarks and splits
+│   └── metadata/               manifests + split sets: NOT in the repository (kept locally, shared separately)
+└── docs/
+    ├── MUDRA_MASTER_PLAN.md    original analysis, dataset research, dated progress log (very detailed)
+    ├── architecture.md         short architecture table
+    └── planning/               the client's original review documents
+```
+
+Not committed (see `.gitignore`): `node_modules/`, `.venv/`, all datasets (`data/raw/`, `data/external/`,
+`data/processed/`, `data/metadata/` manifests and split CSVs), root `/experiments/` (training runs, logs,
+reports), `training/assets/mediapipe/*.task`, `.env`. The repository contains code, configs, docs and
+the deployed model only.
+
+---
+
+## 4. System architecture
+
+```mermaid
+flowchart LR
+  subgraph Browser [Browser - React app]
+    CAM[Webcam 640x480] --> HT[handTracker.js<br/>HandLandmarker + PoseLandmarker<br/>pose every 2nd frame]
+    HT --> SR[signRecognizer.js<br/>WebSocket client]
+    HT --> CP[CommunicatePage<br/>skeleton overlay, framing + fps checks]
+    SR --> CP
+    CP --> SENT[sentence builder<br/>islDictionary.js] --> TTS[speechSynthesis]
+    RP[RecordPage] --> RC[recordingClient.js]
+  end
+  subgraph Backend [FastAPI - app/backend]
+    WS[/stream WebSocket/] --> PF[parse_frame + assign_hands]
+    PF --> STR[StreamingRecognizer<br/>mudra_ml.streaming]
+    STR --> SEG[SignSegmenter<br/>resting / signing / ended]
+    STR --> MB[ModelBundle<br/>features -> BiLSTM -> probs + embedding]
+    STR --> CW[CustomWordBank<br/>few-shot prototypes]
+    REC[/recordings/] --> STORE[RecordingStore<br/>.npz + manifest_app.csv]
+    STORE --> CW
+    REF[/reference/] --> RCL[ReferenceClips]
+    PRED[/predict/] --> SIGN[SignRecognizer]
+  end
+  SR <-->|JSON frames / events| WS
+  RC -->|POST landmarks| REC
+  CP -->|GET labels, reference| REF
+```
+
+**Process model.** Two processes: the Vite dev server (port 3000) serves the React app; uvicorn
+(port 8000 by default, `MUDRA_PORT`) serves the API. The browser does all camera and landmark work
+(MediaPipe Tasks Vision, WASM, GPU delegate with CPU fallback). The backend never sees images.
+
+**Shared code.** `training/src/mudra_ml` is installed into the backend venv (`-e ../../training`
+in `requirements.txt`). The API imports the *same* feature code, segmenter and model loader that
+training and the benchmarks use, so offline results describe the live code path exactly.
+
+**Offline fallback.** If `/health` is unreachable, Communicate falls back to the rule engine in
+`islClassifier.js` (8 static signs). The Practice page always uses the rule engine.
+
+---
+
+## 5. Live recognition: end-to-end data flow
+
+1. **Camera.** `handTracker.startCamera()` requests 640x480 at ideal 30 fps. Each new video frame:
+   `HandLandmarker.detectForVideo` (2 hands max, confidence 0.5) every frame;
+   `PoseLandmarker.detectForVideo` (lite model) every **other** frame (the last pose is reused).
+   An EMA of the frame rate is attached to each result as `fps`.
+2. **Page.** `CommunicatePage.handleMediaPipeResults` draws the skeleton (mirrored), updates the
+   framing check (Section 5.1) and the fps badge, and calls `signRecognizer.addFrame(results)`.
+3. **WebSocket.** On the first frame the client opens `ws://<API>/stream`, sends
+   `{"type":"start","width","height"}`, then one `{"type":"frame","t","hands","pose"}` per frame
+   (coordinates rounded to 4 decimals). Section 6.2 has the full protocol.
+4. **Server per frame.** `parse_frame()` converts the JSON into a `Frame`; `assign_hands()` puts each
+   detected hand in the signer's LEFT or RIGHT slot by distance to the pose wrists (MediaPipe's
+   handedness label is only a fallback because it assumes a mirrored selfie image).
+5. **Segmenter.** `SignSegmenter.push(frame)` updates the activity signal and the state machine
+   (Section 9) and emits `sign_started`, `too_short` or `sign_ended` (+ the segment).
+6. **Provisional guesses.** While signing, every 0.5 s the current partial segment is classified and
+   sent as `provisional` ("Looks like X…"); these are display-only and never added to the sentence.
+7. **Whole-sign decision.** On `sign_ended` the segment (padded 0.3 s before / 0.2 s after) is
+   classified once (`tta` cuts averaged), then `ModelBundle.decide()` returns `ok` / `uncertain` /
+   `no_sign`; the custom-word bank may override (Section 10); a repeat of the same word within
+   `cooldown_s` becomes `duplicate`.
+8. **Client decision** (`CommunicatePage`):
+   - `ok` → the word is added.
+   - `uncertain` or `no_sign` with hands visible in ≥50% of the segment and top-1 confidence
+     ≥ `AUTO_ADD_MIN` (0.5) → the top-1 word is added marked "Added, unsure", and the runners-up are
+     offered as optional one-tap **replacements** (they replace the last word).
+   - otherwise → "Didn't catch that" / "Waiting for a sign".
+9. **Sentence.** `buildMultilingualSentence(tokens, lang)` maps known token sequences to
+   English / Hindi / Marathi sentences (else joins readable words). After `AUTO_SPEAK_PAUSE_MS`
+   (2.5 s) without a new sign starting, the sentence is spoken once (`speechSynthesis`, en-IN /
+   hi-IN / mr-IN); a checkbox disables auto-speak (stored in `localStorage`).
+10. **Logging.** The backend appends one JSON line per finished sign (decision summary only, never
+    landmarks) to `experiments/logs/stream_events.jsonl` (`MUDRA_EVENTS_LOG`).
+
+### 5.1 Client-side checks on Communicate
+
+| Check | Rule | Message |
+|---|---|---|
+| Framing | over 60-frame windows: shoulders (pose 11, 12) visible ≥0.5 in >50% of frames, else `no_shoulders`; shoulder span > 0.6 of frame width or shoulder line below 0.72 of height in >50% → `too_close` | amber banner asking to move back |
+| Frame rate | tracking EMA < `LOW_FPS` (15) | amber banner: tracking is slow |
+| Vocabulary | `/labels` fetched when online | "What can I sign?" searchable list; tap a word → `SignReference` plays its training example |
+
+---
+
+## 6. Interfaces: HTTP API, WebSocket protocol, configuration
+
+### 6.1 HTTP endpoints (`app/backend/mudra_api/app.py`)
+
+| Method & path | Purpose | Response (main fields) |
+|---|---|---|
+| `GET /` | identity | `project`, `api_version`, `docs` |
+| `GET /health` | liveness | `status`, `model_loaded`, `model`, `num_signs` (excludes `_` classes), `device`, `error`, `custom_words` |
+| `GET /labels` | vocabulary | `count`, `labels[]`: `sign`, `label` (readable), `has_reference`, `test_correct`, `test_clips` (from the model card) |
+| `GET /model` | model card minus stats/classes | card fields + `num_signs`, `active_threshold` |
+| `GET /reference/{sign}` | one real training example | `sign`, `label`, `fps` (≤15), `width`, `height`, `frames[]`: `hands` [2 × (21×[x,y,z]) or null], `pose` (33×[x,y,z,vis] or null); 404 if none |
+| `POST /predict` | classify one pre-cut clip | request `PredictRequest`: `frames` (8-256) of `{hands:[{landmarks 21×3, handedness?, score}], pose: 33×3|4 or null}`, `width`, `height`, `mirrored`, `top_k` (1-10). Response: `status` (`ok`/`uncertain`/`no_hands`/`no_sign`), `sign`, `label`, `confidence`, `top_k[]`, `hand_rate`, `frames_received`, `threshold`, `model`, `inference_ms`. `no_hands` when < `MUDRA_MIN_HAND_RATE` (0.3) of frames show a hand; uses the model card threshold (0.85) |
+| `GET /recordings` | recording summary | `total`, `signs[]` (`sign`, `label`, `recordings`, `rejected`, `signers`, `in_model`, `custom_active`, `items[]`), `custom_words[]` |
+| `POST /recordings` | save one recorded sign | request `{label, signer, width, height, frames[] (1-1200, same frame format as /stream with t)}`; response `sample_id`, `label`, `label_readable`, `signer`, `duration_s`, `any_hand_rate`, `quality_flag` (`""`, `too_short`, `low_hand_detection`, `no_pose`), `label_count`, `custom_active`, `in_model`; 422 on invalid input |
+| `DELETE /recordings/{sample_id}` | delete one recording | `{deleted}`; 404 if unknown |
+| `WS /stream` | live recognition | Section 6.2 |
+
+CORS allows `localhost:3000/5173` and `127.0.0.1:3000/5173` plus `MUDRA_CORS_ORIGINS`; methods GET, POST, DELETE.
+
+### 6.2 WebSocket `/stream` protocol
+
+Client → server:
+
+```json
+{"type": "start", "width": 640, "height": 480}
+{"type": "frame", "t": 12.345,
+ "hands": [{"landmarks": [[x, y, z], ... 21], "handedness": "Left", "score": 0.97}],
+ "pose": [[x, y, z, visibility], ... 33] }
+```
+
+`t` is seconds (any monotonic clock); `pose` may be `null`; coordinates are MediaPipe-normalised
+image coordinates of the **unmirrored** video. A new `start` resets the session.
+
+Server → client (only on changes):
+
+| `event` | Extra fields | Meaning |
+|---|---|---|
+| `sign_started` | `state` | activity began |
+| `provisional` | `state`, `guess` {`sign`, `confidence`, `label`} | live best guess while signing (display only) |
+| `too_short` | `state`, `stats` {`reason`, `duration_s`} | activity shorter than `min_sign_s`; ignored |
+| `sign_ended` | `state`, `result`, `stats`, `t0`, `t1` | one whole sign classified |
+| `error` | `detail` | e.g. no model loaded |
+
+`result`: `status` (`ok` / `uncertain` / `no_sign` / `duplicate`), `sign` (null unless ok), `label`,
+`confidence` (best class probability), `top_k[]` {`sign`, `confidence`, `label`} (background excluded),
+`background` (probability of `_BACKGROUND_`), and for custom words `custom: true`.
+`stats`: `reason` (`rest` / `max_length`), `duration_s`, `frames`, `fps`, `hand_rate`,
+`both_hands_rate`, `pose_rate`, `body_reference` (shoulders were seen).
+
+### 6.3 Configuration
+
+Backend environment variables (`app/backend/mudra_api/settings.py`, `main.py`), all optional:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MUDRA_PORT` | 8000 | backend port (`python main.py`) |
+| `MUDRA_MODEL_DIR` | `app/backend/models/isl_mudra_combined_v6_bilstm` | exported model directory |
+| `MUDRA_DEVICE` | `cpu` | `cpu` or `cuda` |
+| `MUDRA_UNCERTAIN_THRESHOLD` | from model card (0.85) | `/predict` threshold override |
+| `MUDRA_MIN_HAND_RATE` | 0.3 | `/predict`: below this share of frames with hands → `no_hands` |
+| `MUDRA_CORS_ORIGINS` | – | extra comma-separated origins |
+| `MUDRA_EVENTS_LOG` | `experiments/logs/stream_events.jsonl` | per-sign decision log |
+| `MUDRA_RECORDINGS_DIR` | `data` | root for `processed/landmarks/app` and `metadata/manifest_app.csv` |
+| `MUDRA_REFERENCE_SPLIT` | `data/metadata/splits/combined_words_v3/train.csv` | where reference examples come from |
+
+Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:8000`),
+`VITE_SIGN_MODEL=off` disables the model client. Frontend constants worth knowing:
+`CommunicatePage.jsx` (`AUTO_SPEAK_PAUSE_MS` 2500, `AUTO_ADD_MIN` 0.5, `LOW_FPS` 15, `FRAMING`),
+`RecordPage.jsx` (`SUGGESTED_WORDS`, `DURATIONS` 2-5 s, `COUNTDOWN_S` 3, `TARGET_PER_WORD` 5),
+`faceExpressionTracker.js` (`TARGET_FPS` 5).
+
+Live decision settings: `training/configs/streaming.json`, loaded by the API at startup and by
+`eval_continuous.py` (Section 9). Few-shot limits: `training/configs/fewshot.json` (Section 10).
+
+---
+
+## 7. Landmarks and the feature vector
+
+**Raw landmarks** (`mudra_ml.preprocessing.sequence.LandmarkSequence`, saved as `.npz`):
+`hands` [T, 2, 21, 3] (slot 0 = signer's LEFT, 1 = RIGHT), `hand_present` [T, 2], `hand_score`
+[T, 2], `pose` [T, 33, 4] (x, y, z, visibility), `pose_present` [T], `timestamps_ms` [T], `meta`
+(width, height, fps, source, label, …). INCLUDE pose-release clips store frame indices as
+timestamps (`meta.timestamps_are_frame_indices`).
+
+**Hand slot assignment** (`assign_hands`): each detected hand goes to the side of the nearest pose
+wrist (pose 15 = left wrist, 16 = right wrist); MediaPipe handedness is a fallback; missing scores
+are padded so hands are never dropped.
+
+**Per-frame features (162 dims)** — `normalization.build_frame_features`, `schema.py`:
+
+| Index | Block | Content |
+|---|---|---|
+| 0-62 | left hand shape | 21 points relative to the wrist, scaled by palm size (`normalize_hand_shape`) |
+| 63-65 | left hand location | wrist x, y relative to the shoulder centre / shoulder width; z from pose wrist depth |
+| 66-128 | right hand shape | as above |
+| 129-131 | right hand location | as above |
+| 132-158 | upper-body pose | 9 points (nose, eyes 2/5, shoulders 11/12, elbows 13/14, wrists 15/16) relative to shoulder centre / width |
+| 159-161 | masks | left hand present, right hand present, pose present |
+
+- All x (and z) values are first multiplied by width/height (`aspect_correct`) so non-square
+  frames do not distort geometry.
+- The body frame (shoulder centre and width) requires both shoulders with visibility ≥ 0.5; it is
+  forward/back-filled across frames, with a fixed fallback if shoulders are never seen.
+- Missing hands/pose produce zeros plus a 0 mask.
+- Optional velocity features (`FeatureConfig.use_velocity`) append frame-to-frame differences of the
+  coordinate blocks; **the deployed model does not use them** (`use_velocity: false`).
+- **Sequence sampling:** `seq_len` = 24 frames, uniform over the clip at inference
+  (`frame_sampler.sample_indices`), random within a window during training.
+- **Standardisation:** per-feature mean, but **per-block** standard deviation (left shape, left
+  location, right shape, right location, pose) so near-constant jitter dimensions are not amplified;
+  masks are not standardised. Stats are stored in the model card. Features are clipped to ±10.
+
+---
+
+## 8. The recognition model
+
+`mudra_ml/models/sequence_model.py` (`SequenceClassifier`, built by `build_model(ModelConfig)`):
+
+```
+input [B, 24, 162]
+  -> LandmarkMLP per frame: Linear 162->256, LayerNorm, GELU, Dropout(0.15), Linear 256->128, LayerNorm, GELU
+  -> BiLSTM: 2 layers, hidden 256 per direction, dropout 0.3 between layers        (temporal = "bilstm")
+  -> AttentionPool: softmax(Linear(512->1)) weighted mean over time                 -> embedding [B, 512]
+  -> head: LayerNorm(512) -> Dropout(0.3) -> Linear(512 -> 315)                     -> logits
+```
+
+- 2,606,012 parameters. Other temporal options exist for ablations: `none` (mean pooling) and
+  `transformer` (dim 192, 4 layers, 4 heads).
+- `SequenceClassifier.encode()` returns the pooled embedding (used for few-shot matching);
+  `forward()` returns logits.
+- **Classes:** 315 = 314 words + `_BACKGROUND_` ("no sign yet": rest, partial signs, fidgets).
+  Classes starting with `_` are hidden from all user-facing lists.
+- **Calibration:** temperature scaling fitted on validation, bounded to [0.25, 5]
+  (`metrics.fit_temperature`); v6 temperature = 0.698. Probabilities = softmax(logits / T).
+- **Export** (`export_model.py`): `model.pt` (state dict only, `weights_only` loadable) +
+  `model_card.json`: `name`, `created`, `source_run`, `classes`, `model_config`, `feature_config`,
+  `feature_mean`, `feature_std`, `temperature`, `uncertain_threshold` (lowest threshold reaching
+  98.5% validation accuracy on kept clips, minimum 0.5; v6 = 0.85, used by `/predict` only),
+  `threshold_selection`, `metrics`, `per_word_test` ({word: {correct, clips}}), `data`, `limitations`.
+- `ModelBundle` (`streaming.py`) loads a model directory and provides `probs()`, `embed()`,
+  `probs_and_embeddings()` and `decide()`.
+
+---
+
+## 9. Sign segmentation and the commit decision
+
+`mudra_ml/streaming.py`, settings from `training/configs/streaming.json`:
+
+| Setting | Value | Meaning |
+|---|---|---|
+| `raise_y` | 1.0 | a wrist higher than 1.0 shoulder widths below the shoulder line counts as raised |
+| `speed` | 2.0 | wrist speed (shoulder widths / s) that counts as moving |
+| `on_s` | 0.05 | continuous activity needed to start a sign |
+| `off_s` | 0.4 | continuous rest needed to end a sign |
+| `pad_pre_s`, `pad_post_s` | 0.3, 0.2 | context added before / after the detected sign |
+| `min_sign_s` | 0.3 | shorter activity → `too_short` |
+| `max_sign_s` | 6.0 | a sign running this long is classified anyway (`reason: max_length`) |
+| `buffer_s` | 12.0 | frames kept in memory |
+| `commit_threshold` | 0.7 | whole-sign probability needed for `ok` (chosen on validation streams) |
+| `margin` | 0.0 | required top-1 minus top-2 gap |
+| `tta` | 1 | number of slightly shifted cuts averaged (1 = just the segment) |
+| `cooldown_s` | 1.0 | the same word is not added twice within this time |
+| `provisional_s` | 0.5 | interval of live guesses while signing |
+
+**Activity** (`SignSegmenter._activity`): a frame is active if any visible hand is raised or moving.
+If shoulders have never been seen, any visible hand counts as active. **States:** `idle` →
+(`on_s` of activity) → `signing` → (`off_s` of rest, or `max_sign_s`) → classify → `idle`.
+
+**Decision** (`ModelBundle.decide`): argmax `_BACKGROUND_` → `no_sign`; else probability <
+threshold (or gap < margin) → `uncertain`; else `ok`.
+
+Settings were tuned with `eval_continuous.py --tune` (segmenter grid) and `--tune-threshold-only`
+on **validation** streams only.
+
+---
+
+## 10. Recording tool and few-shot custom words
+
+**Record page** → `POST /recordings`: name, word (8 suggested app words or any typed word), 3 s
+countdown with hands down, 2-5 s capture, landmarks only. `RecordingStore` (`recordings.py`):
+
+- saves `data/processed/landmarks/app/<LABEL>/<id>.npz` and a row in `data/metadata/manifest_app.csv`
+  (standard manifest format; `signer_id = app:<name>`, `group_id = app:session:<name>:<YYYYMMDD>`);
+- quality flags: `too_short` (< 0.5 s), `low_hand_detection` (< 30% frames with a hand), `no_pose`;
+  flagged takes are kept but not counted or used;
+- words **not** in the model become **custom words** immediately; words already in the model are
+  stored for the next retraining only.
+
+**Few-shot matching** (`fewshot.py`, `CustomWordBank`): a word's prototype is the normalised mean of
+its recordings' normalised embeddings. For a finished sign with embedding e, the best prototype
+wins if cosine similarity ≥ `min_similarity` (0.6), beats the runner-up by `margin` (0.0), **and** the
+model's own result is not a confident known word (status `ok` with confidence ≥ `max_model_confidence`
+0.95 blocks the override). Limits were tuned on validation by `eval_fewshot.py`.
+
+**Retraining with recordings:** add `data/metadata/manifest_app.csv` to `make_splits.py
+--manifests …` and train; session groups keep each sitting within one split.
+
+---
+
+## 11. Training pipeline
+
+All commands run from the repository root inside `app/backend/.venv`.
+
+| Step | Script | Output |
+|---|---|---|
+| Audit raw data (read-only) | `audit_dataset.py --source <s> --input data/raw/<s>` | `experiments/reports/audit_<s>.*` |
+| Extract landmarks | `extract_landmarks.py --source <s> --input <folder> [--workers N] [--group-strip REGEX] [--labels …] [--exclude REGEX]` | `data/processed/landmarks/<s>/<LABEL>/<id>.npz`, `data/metadata/manifest_<s>.csv` |
+| Convert INCLUDE pose release | `convert_include_pose.py --variant include` | landmarks + `manifest_include.csv` |
+| Add re-extracted INCLUDE videos to a split set | `align_include_video.py --manifest … --base <set> --name <new>` | each video takes its pose twin's split and group |
+| Make splits | `make_splits.py --manifests … --name <set> [--ratios a b c] [--signer-regex R] [--session-regex R] [--no-dedupe]` | `data/metadata/splits/<set>/{train,val,test}.csv`, `classes.json`, `split_report.json` |
+| Train | `train.py --config <yaml> --name <run> [--set key=value …]` | `experiments/runs/<run>_<time>/` |
+| Ablation table | `run_ablation.py --config ablation_landmarks.yaml --tag <t>`; `summarize_runs.py`; `best_run.py` | comparison tables |
+| Re-evaluate runs | `evaluate.py experiments/runs/<glob>` | reports |
+| Export to the API | `export_model.py --run <run dir> --name <model> --data-source combined` | `app/backend/models/<model>/` |
+| Live-use benchmark | `eval_continuous.py --model <dir> --split <csv> [--scenarios normal,closeup,closeup_rest] [--fps-cap N] [--tune | --tune-threshold-only] [--auto-add P] [--config-out F]` | Section 13 |
+| Few-shot benchmark | `eval_fewshot.py --model <dir> --split-dir <set with novel.csv>` | writes `training/configs/fewshot.json` |
+| Other dataset | `eval_external.py --model <dir> --manifest <csv> [--mirror]` | accuracy on overlapping labels |
+
+**Extraction settings** (`configs/data.yaml`): MediaPipe Tasks `hand_landmarker.task` +
+`pose_landmarker_full.task` (in `training/assets/mediapipe/`, downloaded separately), confidence
+0.5, ≤30 fps, 4 workers. The browser uses `pose_landmarker_lite.task`.
+
+**Splits** (`data/splits.py`): rows are grouped by `group_id` (signer, recording, or clip); a group
+never spans splits; official splits (INCLUDE) are locked; byte-identical duplicates are removed;
+`check_no_leakage` asserts no group or file crosses splits.
+
+**Training loop** (`training/trainer.py`): AdamW (lr 1e-3, weight decay 0.05), 5 warm-up epochs
+then cosine decay, label smoothing 0.1, batch 64, mixed precision, gradient clip 1.0, up to 150
+epochs, early stopping (patience 30) on **validation macro-F1**, best checkpoint `best.pt`, then
+temperature fitting on validation and a single test evaluation (`evaluation/evaluate.py`,
+per-source metrics). `init_from` copies all weights except the classifier head (transfer).
+
+**Dataset and augmentation** (`datasets/isl_dataset.py`, `augment.py`, `camera.py`, `distractors.py`):
+
+| Augmentation | Deployed value | Notes |
+|---|---|---|
+| rotation / scale / shear / shift | ±10° / ±10% / 0.1 / 0.05 | affine on all landmarks |
+| jitter | 0.003 | Gaussian noise |
+| hand dropout | 0.05 per frame | |
+| temporal crop | keep ≥ 80% | random window |
+| `segment_crop_prob` | 0.5 | cut the clip the way the live segmenter would (its active span + padding ± 0.15 s) |
+| `closeup_prob` | 0.4 | simulated close-up webcam: virtual 640×480 crop around head and shoulders; hands < 60% inside the frame are dropped; out-of-frame pose points get visibility ≤ 0.2 |
+| `mirror_prob` | 0.0 | flip + swap hands (tested; hurt) |
+| background samples | 25% of samples | `_BACKGROUND_`: clip openings or endings (10-40% of a clip) and, for 30% of them, synthetic fidgets (hand to face and back) |
+
+**Reproducing the deployed model:**
+
+```powershell
+python training/scripts/train.py --config mudra_words.yaml --name mudra_words        # ~45 min, RTX 5060
+python training/scripts/export_model.py --run experiments/runs/mudra_words_<time> --name <model> --data-source combined
+python training/scripts/eval_continuous.py --model app/backend/models/<model> `
+    --split data/metadata/splits/combined_words_v3/val.csv --scenarios normal,closeup --fps-cap 12 `
+    --tune-threshold-only --config-out training/configs/streaming.json
+```
+
+The landmark `.npz` files must exist first (Section 12 explains how to rebuild them).
+
+---
+
+## 12. Data: sources, splits, label fixes, licences
+
+| Source (`source` column) | Clips | Words | Origin | Licence |
+|---|---|---|---|---|
+| `include` | 4,292 | 263 | INCLUDE pose release (AI4Bharat OpenHands, Zenodo 6674324), converted | CC-BY-4.0 |
+| `include_video` | 2,795 (2,672 used) | 181 | INCLUDE original videos (Zenodo 4010759; 10 of 15 categories; at `C:\ISL\ISLTrainingData` as 29 zips), re-extracted with the browser's MediaPipe pipeline | CC-BY-4.0 |
+| `islwords` | 1,210 | 61 | MUDRA team recordings (`C:\ISL\archive\Video_Dataset`), each with two rotated copies grouped with the original | team; **licence to be confirmed before public release** |
+| `app` | 0 so far | – | Record page | recorders; not committed |
+
+INCLUDE has no signer IDs. Other team data at `C:\ISL` not in use: 101 sentence videos
+(`Videos_Sentence_Level`), ISLVT (78 sentences, with Marathi), `dataset_ISL` alphabet images
+(12,637 images, 100×100 px, one signer; MediaPipe finds a hand in only 25% → unusable for fingerspelling).
+
+**Where the data lives.** No dataset file is in the repository (decision of 2026-10-12: code and
+models only). On the development machine: `data/metadata/` (manifests, split CSVs, `label_fixes.json`,
+about 8 MB), `data/processed/landmarks/` (extracted `.npz`), `data/raw/include_video/` (INCLUDE videos),
+`data/external/include_pose/` (INCLUDE pose release) and `C:\ISL` (team recordings). To train or run
+the data-dependent tests elsewhere, copy `data/metadata/` and `data/processed/` from that machine or
+rebuild them (`data/README.md`). Early versions of some manifests remain in this repository's history
+(commits up to `21086c0`).
+
+**Split sets** (`data/metadata/splits/`, local):
+
+| Set | Train / val / test | Use |
+|---|---|---|
+| `combined_words_v3` | 5,588 / 1,040 / 1,495 (include 2,908/523/816, include_video 1,838/336/498, islwords 842/181/181) | **deployed model**; INCLUDE official split locked (video copies follow their pose twins); team words 70/15/15 by recording; holds the label fixes |
+| `include` | official | INCLUDE 263 words only |
+| `combined_words_v2_fewshot` | 289 classes + `novel.csv` (25 team words held out) | few-shot benchmark (built before the label fixes) |
+| `combined_words_v2_session` | 9 INCLUDE sessions test, 4 val | session-independent test (built before the label fixes) |
+
+**Label audit and fixes (2026-10-07).** A cross-session nearest-neighbour check in the model's
+embedding space plus a within-session check found that one INCLUDE recording session (Home words,
+files `MVI_4896`-`MVI_4955`) has its folder boundaries off by one: the third take of each word is
+the next word's sign. 20 clips were relabelled in both the pose and video copies (e.g.
+`MVI_4899` KITCHEN→BATHROOM, `MVI_4905` PENCIL→PEN, `MVI_5138` HOT→COLD). The full list with
+evidence is in `data/metadata/splits/combined_words_v3/label_fixes.json` (local; the 20 fixes are:
+Home `MVI_4896` BEDROOM→KITCHEN, `4899` KITCHEN→BATHROOM, `4902` BATHROOM→PENCIL, `4905` PENCIL→PEN,
+`4908` PEN→PHOTOGRAPH, `4911` PHOTOGRAPH→SOAP, `4914` SOAP→BOOK, `4919` BOOK→PAGE, `4922` PAGE→KEY,
+`4925` KEY→PAINT, `4931` LETTER→PAPER, `4934` PAPER→LOCK, `4937` LOCK→TELEPHONE, `4940` TELEPHONE→BAG,
+`4943` BAG→BOX, `4946` BOX→GIFT, `4949` GIFT→CARD, `4952` CARD→RING, `4955` RING→TOOL; Adjectives
+`MVI_5138` HOT→COLD; each applied to both the video and the pose-release copy). Other checks found no
+video filed under two words and the pose/video copies agree (median wrist-trajectory correlation 0.96).
+
+**Hand visibility caveat.** While the arm is raised, MediaPipe finds the hands in 71% (INCLUDE
+videos) / 80% (pose release) of frames, versus ~99% for webcam-like team recordings, because of
+motion blur in the full-body INCLUDE footage.
+
+---
+
+## 13. Evaluation methodology and current results
+
+### Methods
+
+- **Clip level:** each held-out clip classified once (uniform 24 frames). Reported per source.
+- **Continuous streams** (`eval_continuous.py`): held-out clips joined into streams of 8 signs with
+  smooth 0.3-1.0 s transitions, idle stretches of 2-4 s every third sign (70% with a synthetic
+  fidget), and 1.5 s of rest at the end. The real `StreamingRecognizer` runs on them. Metrics per
+  true sign: **correct**, **wrong**, **missed**; plus **extra words per sign** and **false words per idle
+  minute**. Scenarios: `normal`, `closeup` (simulated close-up webcam), `closeup_rest` (close-up and
+  hands resting in view between signs); `--fps-cap` simulates a slow camera.
+  Tuning objective: `correct − 3·wrong − 3·extra − 0.5·idle_false_per_min`, on validation only.
+- **Few-shot:** model trained without 25 team words; k recordings form prototypes; held-out clips.
+- **Session-independent:** 9 whole INCLUDE recording sessions held out (sessions found by file-number
+  runs and first-frame appearance clustering; a signer may appear in more than one session).
+
+### Current results (deployed v6, held-out test, corrected labels)
+
+Clip level: INCLUDE videos **99.0%**, pose release **97.4%**, team words **99.4%**; overall 98.2%,
+top-5 100%, ECE 0.005. (Published INCLUDE references: 85.6% original paper, 93.5% OpenHands SL-GCN, 97.7% HWGAT.)
+
+Continuous streams at 12 fps:
+
+| Source | Framing | Correct | Wrong | Missed |
+|---|---|---|---|---|
+| INCLUDE videos (498 signs) | normal | 93.8% | 1.2% | 5.0% |
+| | close-up | 90.6% | 2.0% | 7.4% |
+| INCLUDE pose release (816) | normal | 92.6% | 2.1% | 5.3% |
+| | close-up | 90.0% | 2.0% | 8.1% |
+| Team words (181) | normal | 97.2% | 0.0% | 2.8% |
+| | close-up | 90.1% | 2.2% | 7.7% |
+
+Extra words ≤ 0.002 per sign; false words while idle ≤ 0.1 per minute.
+
+Other measurements:
+
+| Measurement | Result | Model |
+|---|---|---|
+| Unseen INCLUDE recording sessions, clip level | 66.7% (top-5 91%) | v3 recipe trained without those sessions |
+| …same, continuous streams | 48.4% correct / 9.5% wrong | same |
+| Accuracy vs training sessions per word | 2 sessions 64%, 3-4 → 69%, 5+ → 92% | same |
+| Few-shot, 1 / 3 / 5 examples | 70.1% / 79.5% / 81.6% recognised; 0.10-0.14% of known words taken over | v3 recipe without 25 words |
+| Team words, held-out recording day | 98.0% | combined v1 |
+| INCLUDE-only model on team words | 8.3% | INCLUDE-only model (removed) |
+| Original rule-based / Random-Forest system | ~44% | original app |
+| **Developer's live webcam, 2026-10-07** | **0 of 11 signs**; ~6.5 fps; 6 of 11 hit `max_length` | v6 |
+
+---
+
+## 14. Model version history
+
+| Version | Commit | Change | Key result |
+|---|---|---|---|
+| INCLUDE-only BiLSTM | `130c723` | first trained model in the app | INCLUDE 96.7% (3 seeds); 8.3% on team words |
+| combined v1 | `a0c54f3`, `21086c0` | + team words, background class, fidgets | streams: INCLUDE 85.2% / team 98.9% correct |
+| v2 | `2f49090` | + INCLUDE videos re-extracted with the browser pipeline | real-video clips 71.5% → 96.8% |
+| v3 | `e7c6cb0` | segment-style crops, background only from clip starts/ends | real-video streams 82.1% → 92.6% |
+| v4 | `98abddd` | simulated close-up webcam augmentation | close-up streams ~71% → ~88% |
+| v5 (velocity) | – | + velocity features | worse (95.4% vs 97.0% real-video clips); not deployed |
+| **v6** | `8d233f2` | trained on corrected labels | mean stream correct 89.5% → 92.4% (test, 12 fps) |
+| v7 (gap filling) | – | + hand gap interpolation | no better than v6; not deployed |
+
+Only v6 is kept in the repository (`53558e1` removed the others; they remain in git history).
+
+---
+
+## 15. Experiments tried and not adopted
+
+| Idea | Result | Where measured |
+|---|---|---|
+| Mirror augmentation (both dominant hands) | worse on unseen sessions (60.1% vs 66.7%) | session split |
+| Stronger geometric augmentation | 64.5% vs 66.7% | session split |
+| Pose dropout (hands-only samples) | 62.8% test (69.5% val) vs 66.7% | session split |
+| Velocity features | 95.4% vs 97.0% real-video clips | v3 split |
+| End a sign when hands are held still (0.8 s) | −3 to −7 points correct on test streams | test streams, 3 framings |
+| …gentler version (1.2 s, 4 s cap) | −1 to −5 points on validation | validation streams |
+| Zoomed upper-body hand search during extraction | hands found 67% → 72-73% while signing; not worth re-extracting | 34-clip sample |
+| Hand gap filling (≤0.4 s) as training/inference feature | restores hands to ~100% in data, but streams no better than v6 | val + test streams |
+| Transfer learning for the 101-sentence model | 51.6% vs 57% | sentence split |
+| Transformer instead of BiLSTM | statistical tie on INCLUDE (96.45% ± 0.75 vs BiLSTM within noise, 3 seeds); BiLSTM kept | INCLUDE ablation |
+| Face recognition to recover INCLUDE signer IDs | not done: personal-data rule | – |
+
+---
+
+## 16. Known issues and open problems
+
+Priority order. Each item says what is known and what to do next.
+
+1. **Live recognition fails on the developer's webcam** (critical). Stream log 2026-10-07: 11 signs,
+   0 recognised (9 `no_sign` with background ≈0.96-0.997, 2 `uncertain`); 6 of 11 ran to the 6 s cap
+   (`max_length`), i.e. the hands never rested long enough to end the sign; tracking ~6.5 fps despite
+   pose-every-other-frame and face cues at 5 fps. The offline simulations (close-up framing, hands
+   resting in view, 8-12 fps) do **not** reproduce this (85-94% correct), so the cause is in the real
+   session. Next steps: (a) find why the browser tracks at ~6 fps (check whether MediaPipe fell back
+   to the CPU delegate — `console.warn('GPU delegate unavailable…')` — and whether the 3D avatar or
+   face tracker keeps rendering on the Communicate page); show GPU/CPU on screen; (b) have the user
+   record 3 known words × 3 takes on the Record page and replay them offline
+   (`eval_continuous.py --split data/metadata/manifest_app.csv`) to see why they are rejected;
+   (c) compare their signing with the "How to sign it" examples (variant mismatch is likely).
+2. **Generalisation to new people is weak:** 66.7% on unseen recording sessions; accuracy follows
+   the number of sessions per word. Needs more signers: FDMSE-ISL (2,002 words, 20 signers; access
+   by email to the RKMVERI authors, https://cs.rkmvu.ac.in/~isl), CISLR (Google form), iSign
+   (Hugging Face login), teammates recording on the Record page.
+3. **Eight app words are not in the model** (NAMASTE, WATER, HELP, YES, NO, GOODBYE, HOME, PERSON);
+   Communicate labels the quick-add buttons accordingly. Record 5× each to enable them as custom words.
+4. **Practice page uses the rule engine** (8 signs), not the trained model.
+5. **Avatar vocabulary** (26 letters, 13 words) is separate from the recognition vocabulary.
+6. **Port 8000** is used by another project (FloodNet) on the development machine; run MUDRA with
+   `MUDRA_PORT=8010` and `VITE_API_URL=http://localhost:8010`.
+7. **Team data licence** unconfirmed; confirm before making the repo public.
+8. The two `v2_` evaluation split sets predate the label fixes (20 of 8,123 clips differ).
+9. `requirements.txt` pins CUDA 12.8 torch builds; CPU-only machines need the default `torch`.
+10. The training README of earlier phases and `docs/MUDRA_MASTER_PLAN.md` contain historical text;
+    the master plan's progress log is the detailed lab notebook and is append-only.
+
+**Not built yet** (from the original specs): context engine, urgency detection with confirmation
+UI, sentence-level continuous recognition, fingerspelling, signer-independent evaluation on a
+dataset with real signer IDs.
+
+---
+
+## 17. Environment, setup and running
+
+Development machine: Windows 11, Python 3.14 (venv at `app/backend/.venv`, shared by backend and
+training), PyTorch 2.11 + CUDA 12.8, NVIDIA RTX 5060 Laptop GPU (sm_120), Node 20+, MediaPipe 1.0.1
+(Python Tasks API; there is no `mp.solutions`), `@mediapipe/tasks-vision` 1.0.1 in the browser.
+
+**Quick start (Windows):** run `start_all.bat` (creates the venv, installs `requirements.txt` and
+`npm install` only when needed, starts both servers). Then open http://localhost:3000 →
+Communicate → Start Camera.
+
+**Manual start:**
+
+```powershell
+cd app\backend; .venv\Scripts\python.exe main.py                 # API on :8000 (MUDRA_PORT to change)
+cd app\frontend; npm run dev -- --host 127.0.0.1 --port 3000     # app on :3000 (VITE_API_URL to point elsewhere)
+```
+
+**Fresh clone:** `python -m venv app/backend/.venv`, `pip install -r app/backend/requirements.txt`
+(installs `mudra_ml` editable), `npm install` in `app/frontend`. The app runs with the committed
+model; the "How to sign it" examples (`/reference`) and the data-dependent tests need the local
+`data/metadata/` and `data/processed/` folders. Training needs those plus the MediaPipe `.task`
+files in `training/assets/mediapipe/` from
+`https://storage.googleapis.com/mediapipe-models/<task>/<task>/float16/latest/<task>.task`
+(`hand_landmarker`, `pose_landmarker_full`).
+
+**Tools:** `tensorboard --logdir experiments/runs`; `ruff check training app/backend/mudra_api`.
+
+---
+
+## 18. Tests
+
+`pytest training app/backend/tests` → 61 passed (51 test functions, some parametrised), ~25 s.
+
+| File | Covers |
+|---|---|
+| `training/tests/test_frame_sampler.py` | uniform/random sampling, resampling |
+| `training/tests/test_normalization.py` | aspect correction, shape/location features, mirroring |
+| `training/tests/test_splits.py` | grouped splits, locked splits, leakage check, group stripping |
+| `training/tests/test_extractor.py` | extraction of a blank video (empty masks, save/load round trip), hand assignment by pose wrists and its handedness fallback |
+| `training/tests/test_phase2.py` | dataset, background samples, segment and close-up crops, models, old model cards, metrics and calibration, config merging, transfer init, an end-to-end training run, gap filling |
+| `app/backend/tests/test_api.py` | /health, /labels, /model, /predict on held-out clips, no-hands, invalid payloads, missing model 503, early-sign behaviour, /stream WebSocket vs the Python implementation, segmenter states, recordings store + custom words, custom-word decision, /reference |
+
+`app/backend/tests/conftest.py` redirects the event log so tests never write to the real one. Tests
+that need the model or landmark data skip automatically when those files are missing.
+
+---
+
+## 19. Rules and conventions
+
+- **Honest numbers:** only report measured results, name the split, and never tune on test data
+  (thresholds, segmenter settings and few-shot limits are chosen on validation).
+- **No leakage:** copies of one recording share a `group_id`; `check_no_leakage` must pass; new
+  data from the same recording session goes into one split.
+- **Privacy:** landmarks only; never commit videos, landmark files of real people, or
+  `manifest_app.csv`; do not identify people from faces.
+- **Live-path parity:** feature, segmenter and decision code lives in `mudra_ml` and is shared by the
+  API and the benchmarks; change it there, not in the API.
+- **Model changes:** a new model must be compared with the deployed one on the same validation and
+  test streams (`eval_continuous.py`, normal + close-up, 12 fps) before it is deployed; record the
+  numbers in Sections 13-14 and the change log.
+- **Code style:** Python 3.11+ typing, `ruff` (line length 110), docstrings explain *why*; React
+  function components with hooks; Tailwind classes; no new dependencies without need.
+- **Commits:** imperative subject line; body explains what and why with measured effects.
+- **This document:** update at every push (Section 0).
+
+---
+
+## 20. Glossary
+
+| Term | Meaning |
+|---|---|
+| ISL | Indian Sign Language |
+| INCLUDE | public ISL dataset (Sridhar et al., ACM MM 2020), 263 isolated words |
+| pose release | INCLUDE keypoints published by AI4Bharat OpenHands (MediaPipe Holistic) |
+| landmarks | MediaPipe hand (21) and body (33) keypoints per frame |
+| segment | the frames between a detected sign start and end (plus padding) |
+| `_BACKGROUND_` | the "no sign" class |
+| commit | adding a recognised word to the sentence |
+| provisional guess | live best guess shown while signing; never committed |
+| close-up framing | webcam framing from the chin to the chest (simulated by `datasets/camera.py`) |
+| session | one INCLUDE recording sitting (same day, outfit, camera position) |
+| custom word | a word taught on the Record page, matched by few-shot prototypes |
+| tta | test-time averaging over slightly shifted cuts of a segment |
+| ECE | expected calibration error |
+
+---
+
+## 21. Change log (newest first)
+
+Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-12 · first push to `Addy-coder786/Mudra` · code and models only
+- New repository `https://github.com/Addy-coder786/Mudra`. History up to `21086c0` was pushed as is;
+  the later work (`2f49090` … `77ba6cc`, kept in the old repo and in the local branch `full-history`)
+  is published as one snapshot commit so intermediate datasets and superseded models are not uploaded.
+- Datasets are no longer tracked: `data/metadata/` (manifests, split CSVs, label fixes) added to
+  `.gitignore` and kept locally; docs say where the data lives and how to rebuild it.
+- No code, model or behaviour change.
+
+### 2026-10-12 · `53558e1` + handover commit · cleanup and handover
+- Added this `HANDOVER.md`, `AGENTS.md`, `CLAUDE.md` and the `.githooks/pre-push` check.
+- Cleanup (`53558e1`): removed placeholders (`app/shared`, `train_baseline.py`), the unused CNN
+  encoder and RGB branch, `eval_streaming.py`, unused npm/Python packages, the rejected experiment
+  options (still rule, zoomed hand search, pose dropout, gap filling as a feature), five superseded
+  models, old split sets and the INCLUDE-50 / sentence pipelines. Fixed `.gitignore` so
+  `training/configs/experiments/` is committed; added `mudra_words.yaml` (reproduces v6) and
+  `MUDRA_PORT`. 61 tests pass; no model or behaviour change.
+
+### 2026-10-07 · `8d233f2` · label fixes, v6, "How to sign it"
+- Label audit found the off-by-one INCLUDE session; 20 clips relabelled (`combined_words_v3`).
+- v6 trained on corrected labels and deployed (threshold 0.7, tta 1): mean stream correct
+  89.5% → 92.4% on test (12 fps, normal + close-up). v7 (gap filling) and a zoomed hand search not adopted.
+- `/reference/{sign}` + viewer; per-word test accuracy in the model card and word list;
+  auto-add floor raised to 0.5 after a 0.42 "Wednesday" was added for "flat".
+
+### 2026-10-07 · `382a7f4` · live session analysis
+- First real session analysed from the new sign log (25/27 `no_sign`, 6 fps, 6 s segments).
+- Pose every other frame, face cues 5 fps, fps badge; words added automatically with one-tap
+  replacement. Still rule and velocity features evaluated and not adopted.
+
+### 2026-10-06 · `98abddd` · close-up webcams, v4
+- Simulated close-up framing; v4 trained with it: close-up streams ~71% → ~88% correct.
+- Communicate: missed-sign choices, no stuck "Signing…", framing warning, "What can I sign?",
+  automatic speech; backend per-sign log.
+
+### 2026-10-06 · `1287556`, `c216f22`, `e7c6cb0`, `2f49090` · real-time Phase 3
+- Session-independent evaluation (66.7%), Record page + few-shot words (79.5% at k=3),
+  v3 (segment crops; real-video streams 82.1% → 92.6%), v2 (INCLUDE videos re-extracted).
+
+### 2026-10-05 and earlier · `21086c0` … `50811e6`
+- Real-time Phases 1-2 (segmenter, smoothing, background class, fidgets), team data, model in the
+  app, Phase 2 models and ablations, Phase 1 data pipeline, Phase 0 removal of fabricated metrics,
+  baseline merge of the handoff package and the team's GitHub repo. Details:
+  `docs/MUDRA_MASTER_PLAN.md` § 7 (progress log).

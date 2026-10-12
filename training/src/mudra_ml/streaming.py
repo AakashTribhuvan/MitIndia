@@ -138,6 +138,7 @@ class SignSegmenter:
         end = self.rest_since if ended else f.t
         start = self.sign_start
         self.state, self.sign_start, self.active_since = "idle", None, None
+        self.last_end = {"reason": "rest" if ended else "max_length", "duration_s": round(end - start, 3)}
         if end - start < cfg.min_sign_s:
             return "too_short", None
         self.last_bounds = (start - cfg.pad_pre_s, end + cfg.pad_post_s)
@@ -174,16 +175,29 @@ class ModelBundle:
         self.model.load_state_dict(torch.load(Path(model_dir) / "model.pt", map_location=self.device, weights_only=True))
         self.model.to(self.device).eval()
 
-    @torch.no_grad()
-    def probs(self, seqs: list[LandmarkSequence], width: int, height: int) -> np.ndarray:
+    def _features(self, seqs: list[LandmarkSequence], width: int, height: int) -> torch.Tensor:
         feats = []
         for s in seqs:
             s.meta = {**s.meta, "width": width, "height": height}
             x = np.clip(sequence_features(s, self.cfg), -self.cfg.clip_value, self.cfg.clip_value)
             feats.append((x - self.mean) / self.std)
-        logits = self.model(torch.from_numpy(np.stack(feats)).to(self.device)).float().cpu().numpy() / self.temperature
+        return torch.from_numpy(np.stack(feats)).to(self.device)
+
+    @torch.no_grad()
+    def probs(self, seqs: list[LandmarkSequence], width: int, height: int) -> np.ndarray:
+        return self.probs_and_embeddings(seqs, width, height)[0]
+
+    @torch.no_grad()
+    def embed(self, seqs: list[LandmarkSequence], width: int, height: int) -> np.ndarray:
+        """Pooled sequence representation [N, D] (input of the classifier head), for few-shot matching."""
+        return self.probs_and_embeddings(seqs, width, height)[1]
+
+    @torch.no_grad()
+    def probs_and_embeddings(self, seqs: list[LandmarkSequence], width: int, height: int) -> tuple[np.ndarray, np.ndarray]:
+        emb = self.model.encode(self._features(seqs, width, height))
+        logits = self.model.head(emb).float().cpu().numpy() / self.temperature
         p = np.exp(logits - logits.max(axis=1, keepdims=True))
-        return p / p.sum(axis=1, keepdims=True)
+        return p / p.sum(axis=1, keepdims=True), emb.float().cpu().numpy()
 
     def decide(self, p: np.ndarray, top_k: int = 3, threshold: float | None = None, margin: float = 0.0) -> dict:
         """Whole-sign decision: background -> no_sign; below threshold -> uncertain; else ok."""
@@ -198,15 +212,17 @@ class ModelBundle:
             status = "uncertain"
         else:
             status = "ok"
+        bg = self.classes.index(BACKGROUND_LABEL) if BACKGROUND_LABEL in self.classes else None
         return {"status": status, "sign": self.classes[best] if status == "ok" else None,
-                "confidence": float(p[best]), "top_k": top}
+                "confidence": float(p[best]), "top_k": top, "background": float(p[bg]) if bg is not None else 0.0}
 
 
 class StreamingRecognizer:
     """Segmenter + whole-sign classification. Feed frames, receive events."""
 
-    def __init__(self, bundle: ModelBundle, cfg: SegmenterConfig, width: int, height: int):
+    def __init__(self, bundle: ModelBundle, cfg: SegmenterConfig, width: int, height: int, custom=None):
         self.bundle, self.width, self.height = bundle, width, height
+        self.custom = custom  # optional mudra_ml.fewshot.CustomWordBank
         self.segmenter = SignSegmenter(cfg, width, height)
         self.cfg = cfg
         self.threshold = cfg.commit_threshold if cfg.commit_threshold is not None else bundle.threshold
@@ -224,16 +240,28 @@ class StreamingRecognizer:
                     return {"event": "provisional", "state": "signing", "guess": guess["top_k"][0]}
             return None
         if event != "sign_ended":
+            if event == "too_short":
+                return {"event": event, "state": self.segmenter.state, "stats": self.segmenter.last_end}
             return {"event": event, "state": self.segmenter.state} if event else None
         if segment is None:
             return {"event": "sign_ended", "state": "idle", "result": {"status": "no_sign", "sign": None, "confidence": 0.0, "top_k": []}}
         cuts = self.segmenter.variants(*self.segmenter.last_bounds, self.cfg.tta) or [segment]
-        probs = self.bundle.probs(cuts, self.width, self.height).mean(axis=0)  # smoothing over cuts
+        probs, emb = self.bundle.probs_and_embeddings(cuts, self.width, self.height)
+        probs = probs.mean(axis=0)  # smoothing over cuts
         result = self.bundle.decide(probs, threshold=self.threshold, margin=self.cfg.margin)
+        if self.custom is not None and len(self.custom):
+            result = self.custom.decide(emb.mean(axis=0), result) or result
         if result["status"] == "ok":
             if self.last_word and self.last_word[0] == result["sign"] and frame.t - self.last_word[1] < self.cfg.cooldown_s:
                 result = {**result, "status": "duplicate", "sign": None}
             else:
                 self.last_word = (result["sign"], frame.t)
-        return {"event": "sign_ended", "state": "idle", "result": result,
+        span = (float(segment.timestamps_ms[-1]) - float(segment.timestamps_ms[0])) / 1000
+        stats = {**self.segmenter.last_end, "frames": segment.num_frames,
+                 "fps": round((segment.num_frames - 1) / span, 1) if span > 0 else 0.0,
+                 "hand_rate": round(float(segment.hand_present.any(axis=1).mean()), 3),
+                 "both_hands_rate": round(float(segment.hand_present.all(axis=1).mean()), 3),
+                 "pose_rate": round(float(segment.pose_present.mean()), 3),
+                 "body_reference": self.segmenter.body is not None}
+        return {"event": "sign_ended", "state": "idle", "result": result, "stats": stats,
                 "t0": float(segment.timestamps_ms[0]) / 1000, "t1": float(segment.timestamps_ms[-1]) / 1000}

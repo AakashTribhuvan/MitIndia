@@ -1,6 +1,6 @@
 """Train and evaluate one experiment.
 
-    python training/scripts/train.py --config base.yaml --name include50_bilstm
+    python training/scripts/train.py --config mudra_words.yaml --name mudra_words
     python training/scripts/train.py --config base.yaml --name include_bilstm \
         --set data.split_dir=data/metadata/splits/include model.temporal=bilstm
 """

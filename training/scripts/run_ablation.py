@@ -2,7 +2,7 @@
 
 Only measured results go into the table; failed runs are reported as failed, never filled in.
 
-    python training/scripts/run_ablation.py --config ablation_landmarks.yaml --tag include50
+    python training/scripts/run_ablation.py --config ablation_landmarks.yaml --tag include
     python training/scripts/run_ablation.py --config ablation_landmarks.yaml --tag include \
         --set data.split_dir=data/metadata/splits/include
 """
@@ -25,7 +25,7 @@ COLUMNS = ["variant", "temporal", "params", "test_accuracy", "test_top5", "test_
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="ablation_landmarks.yaml")
-    parser.add_argument("--tag", required=True, help="label for this ablation, e.g. include50")
+    parser.add_argument("--tag", required=True, help="label for this ablation, e.g. include")
     parser.add_argument("--only", nargs="*", default=None, help="run only these variant names")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="overrides applied to every variant")
     args = parser.parse_args()

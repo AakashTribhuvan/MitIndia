@@ -65,17 +65,14 @@ class LandmarkExtractor:
 
     def _process(self, rgb: np.ndarray, hand_lm, pose_lm, timestamp_ms: int | None):
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-        if timestamp_ms is None:
-            hand_res, pose_res = hand_lm.detect(image), pose_lm.detect(image)
-        else:
-            hand_res = hand_lm.detect_for_video(image, timestamp_ms)
-            pose_res = pose_lm.detect_for_video(image, timestamp_ms)
+        pose_res = pose_lm.detect(image) if timestamp_ms is None else pose_lm.detect_for_video(image, timestamp_ms)
 
         pose_arr = np.zeros((schema.NUM_POSE_LANDMARKS, 4), dtype=np.float32)
         pose_ok = bool(pose_res.pose_landmarks)
         if pose_ok:
             pose_arr[:] = [(p.x, p.y, p.z, p.visibility or 0.0) for p in pose_res.pose_landmarks[0]]
 
+        hand_res = hand_lm.detect(image) if timestamp_ms is None else hand_lm.detect_for_video(image, timestamp_ms)
         detected = [np.array([(p.x, p.y, p.z) for p in h], dtype=np.float32) for h in hand_res.hand_landmarks]
         labels = [c[0].category_name for c in hand_res.handedness]
         scores = [float(c[0].score) for c in hand_res.handedness]

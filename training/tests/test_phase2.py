@@ -11,7 +11,6 @@ from mudra_ml.data.manifest import ManifestRow, write_manifest
 from mudra_ml.datasets.augment import AugmentConfig
 from mudra_ml.datasets.isl_dataset import FeatureConfig, ISLLandmarkDataset, add_velocity
 from mudra_ml.evaluation.metrics import compute_metrics, expected_calibration_error, fit_temperature
-from mudra_ml.models.cnn_encoder import CNNEncoder
 from mudra_ml.models.sequence_model import ModelConfig, build_model
 from mudra_ml.preprocessing.sequence import LandmarkSequence
 from mudra_ml.training.experiment_config import deep_merge, parse_overrides
@@ -97,21 +96,9 @@ def test_model_output_shapes(temporal):
     assert logits.shape == (5, 7)
 
 
-def test_hybrid_model_requires_appearance_features():
-    model = build_model(ModelConfig(input_dim=40, num_classes=4, appearance_dim=16, lstm_hidden=16))
-    assert model(torch.randn(2, 8, 40), torch.randn(2, 8, 16)).shape == (2, 4)
-    with pytest.raises(ValueError):
-        model(torch.randn(2, 8, 40))
-
-
-def test_cnn_encoder_shapes_and_freezing():
-    enc = CNNEncoder("resnet18", pretrained=False, freeze=True)
-    assert not any(p.requires_grad for p in enc.parameters())
-    enc.set_trainable(True, last_block_only=True)
-    assert any(p.requires_grad for p in enc.backbone.layer4.parameters())
-    assert not any(p.requires_grad for p in enc.backbone.layer1.parameters())
-    out = enc(torch.randn(2, 3, 3, 112, 112))
-    assert out.shape == (2, 3, enc.feature_dim) and enc.feature_dim == 512
+def test_old_model_cards_still_load():
+    cfg = ModelConfig.from_dict({"input_dim": 40, "num_classes": 4, "appearance_dim": 0, "lstm_hidden": 16})
+    assert build_model(cfg)(torch.randn(2, 8, 40)).shape == (2, 4)
 
 
 def test_metrics_and_temperature():
@@ -172,12 +159,11 @@ def test_mirror_augmentation_changes_features_and_is_off_by_default(split_dir):
 def test_ablation_shared_settings_are_applied():
     from mudra_ml.training.experiment_config import ablation_base, load_yaml
 
-    for name, split in (("ablation_sentences.yaml", "islsentences"), ("ablation_combined.yaml", "combined_words")):
-        base = ablation_base(load_yaml(name))
-        assert base["data"]["split_dir"].endswith(split)
-        assert "lr" in base["train"]  # still inherits base.yaml
-    assert ablation_base(load_yaml("ablation_combined.yaml"))["features"]["use_velocity"] is False
-    assert ablation_base(load_yaml("ablation_sentences.yaml"))["train"]["epochs"] == 200
+    base = ablation_base(load_yaml("mudra_words.yaml"))
+    assert base["data"]["split_dir"].endswith("combined_words_v3")
+    assert "lr" in base["train"]  # still inherits base.yaml
+    assert base["features"]["use_velocity"] is False
+    assert base["augment"]["closeup_prob"] == 0.4 and base["background"]["prob"] == 0.25
 
 
 def test_init_from_copies_encoder_but_not_head(tmp_path):
@@ -207,3 +193,64 @@ def test_background_samples_use_background_label(split_dir):
     assert ds[0][0].shape == (8, cfg.feature_dim)
     with pytest.raises(ValueError):
         ISLLandmarkDataset(split_dir / "train.csv", classes[:-1], cfg, background=BackgroundConfig(prob=0.5))
+
+
+def test_segment_crop_uses_active_span(split_dir):
+    classes = json.loads((split_dir / "classes.json").read_text())
+    cfg = FeatureConfig(seq_len=8)
+    ds = ISLLandmarkDataset(split_dir / "train.csv", classes, cfg, AugmentConfig(segment_crop_prob=1.0), seed=0)
+    bounds = ds.segment_bounds()
+    assert len(bounds) == len(ds)
+    for i, b in enumerate(bounds):
+        n = ds.sequences[i].num_frames
+        if b is not None:
+            assert 0 <= b[0] <= b[1] < n and b[2] > 0
+            win = ds._segment_window(i)
+            assert win is not None and 0 <= win[0] and win[0] + win[1] <= n and win[1] >= 4
+    assert ds[0][0].shape == (8, cfg.feature_dim)
+
+
+def test_closeup_view_keeps_geometry_and_hides_low_hands():
+    from mudra_ml.datasets.camera import WEBCAM, CloseupParams, closeup_view
+    from mudra_ml.preprocessing.sequence import LandmarkSequence
+
+    n = 4
+    pose = np.zeros((n, 33, 4), np.float32); pose[..., 3] = 1
+    pose[:, 0, :2] = [0.5, 0.3]  # nose
+    pose[:, 11, :2], pose[:, 12, :2] = [0.6, 0.45], [0.4, 0.45]  # shoulders, 0.2 wide
+    hands = np.zeros((n, 2, 21, 3), np.float32)
+    hands[:, 0, :, :2] = [0.5, 0.40]  # left hand at the chin: stays in view
+    hands[:, 1, :, :2] = [0.5, 0.90]  # right hand at the hips: below a close-up frame
+    present = np.ones((n, 2), bool)
+    seq = LandmarkSequence(hands, present, present.astype(np.float32), pose, np.ones(n, bool), np.arange(n),
+                           {"width": 1000, "height": 1000})
+    view = closeup_view(seq, CloseupParams(above_nose=0.5, below_shoulders=0.5, shift=0.0))
+    assert (view.meta["width"], view.meta["height"]) == WEBCAM
+    assert view.hand_present[:, 0].all() and not view.hand_present[:, 1].any()
+    sx = view.pose[0, 11, 0] - view.pose[0, 12, 0]
+    sy = view.pose[0, 11, 1] - view.pose[0, 0, 1]
+    assert abs(sx * WEBCAM[0] / (sy * WEBCAM[1]) - 0.2 / 0.15) < 1e-3  # proportions unchanged
+
+
+def test_closeup_augmentation_runs(split_dir):
+    classes = json.loads((split_dir / "classes.json").read_text())
+    cfg = FeatureConfig(seq_len=8)
+    ds = ISLLandmarkDataset(split_dir / "train.csv", classes, cfg, AugmentConfig(closeup_prob=1.0, segment_crop_prob=1.0), seed=0)
+    assert all(ds[i][0].shape == (8, cfg.feature_dim) for i in range(len(ds)))
+
+
+def test_fill_hand_gaps_bridges_short_gaps_only():
+    from mudra_ml.preprocessing.sequence import LandmarkSequence, fill_hand_gaps
+
+    n = 20
+    hands = np.zeros((n, 2, 21, 3), np.float32)
+    present = np.zeros((n, 2), bool)
+    for t in (0, 4, 15):  # gap of 3 frames (0.12 s at 25 fps), then a gap of 10 frames (0.4 s)
+        present[t, 0] = True
+        hands[t, 0] = t
+    seq = LandmarkSequence(hands, present, present.astype(np.float32), np.zeros((n, 33, 4), np.float32),
+                           np.ones(n, bool), np.arange(n) * 40, {"fps": 25.0})
+    out = fill_hand_gaps(seq, 0.2)
+    assert out.hand_present[:5, 0].all() and abs(float(out.hands[2, 0, 0, 0]) - 2.0) < 1e-5
+    assert not out.hand_present[5:15, 0].any()  # longer than 0.2 s: left alone
+    assert not out.hand_present[:, 1].any()

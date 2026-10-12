@@ -2,22 +2,33 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 
-import numpy as np
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from mudra_ml import schema
 from mudra_ml.config import project_path
-from mudra_ml.preprocessing.sequence import assign_hands
-from mudra_ml.streaming import Frame, ModelBundle, SegmenterConfig, StreamingRecognizer
+from mudra_ml.fewshot import FewShotConfig
+from mudra_ml.streaming import ModelBundle, SegmenterConfig, StreamingRecognizer
+from pydantic import BaseModel, Field
 
 from mudra_api import __version__
 from mudra_api.recognizer import SignRecognizer, readable
+from mudra_api.recordings import RecordingStore, parse_frame
+from mudra_api.references import ReferenceClips
 from mudra_api.schemas import PredictRequest, PredictResponse
 from mudra_api.settings import Settings
 
 log = logging.getLogger("mudra_api")
+
+
+class RecordingRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=64)
+    signer: str = Field(default="anonymous", max_length=64)
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    frames: list[dict] = Field(min_length=1, max_length=1200)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -26,7 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type"],
     )
 
@@ -42,6 +53,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     except FileNotFoundError as exc:
         load_error = f"Model files not found in {settings.model_dir}: {exc.filename}"
         log.warning(load_error)
+    references = ReferenceClips(settings.reference_split)
+    store = RecordingStore(settings.recordings_dir, bundle, FewShotConfig.load(project_path("training/configs/fewshot.json")))
+    if len(store.bank):
+        log.info("Custom words from app recordings: %s", ", ".join(store.bank.labels))
 
     def require_model() -> SignRecognizer:
         if recognizer is None:
@@ -64,13 +79,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "num_signs": len([c for c in recognizer.classes if not c.startswith("_")]) if recognizer else 0,
             "device": str(recognizer.device) if recognizer else None,
             "error": load_error,
+            "custom_words": len(store.bank),
         }
 
     @app.get("/labels")
     def labels() -> dict:
         rec = require_model()
         signs = [c for c in rec.classes if not c.startswith("_")]
-        return {"count": len(signs), "labels": [{"sign": c, "label": readable(c)} for c in signs]}
+        tested = rec.card.get("per_word_test", {})
+        return {"count": len(signs), "labels": [
+            {"sign": c, "label": readable(c), "has_reference": c in references.available,
+             **({"test_correct": tested[c]["correct"], "test_clips": tested[c]["clips"]} if c in tested else {})}
+            for c in signs]}
+
+    @app.get("/reference/{sign}")
+    def reference(sign: str) -> dict:
+        """One real training example of a sign as landmark frames, so people can see which sign the model learned."""
+        found = references.get(sign.upper())
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"no training example for {sign}")
+        return {**found, "label": readable(found["sign"])}
 
     @app.get("/model")
     def model_card() -> dict:
@@ -79,6 +107,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         card["num_signs"] = len([c for c in rec.classes if not c.startswith("_")])
         card["active_threshold"] = rec.threshold
         return card
+
+    events_log = settings.events_log
+
+    def log_sign(event: dict) -> None:
+        """One line per finished sign (decision summary only, never landmarks) for diagnosing live use."""
+        res = event.get("result") or {}
+        line = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "event": event["event"], **(event.get("stats") or {}),
+                "status": res.get("status"), "sign": res.get("sign"), "custom": bool(res.get("custom")),
+                "top": [(c["sign"], round(c["confidence"], 3)) for c in res.get("top_k", [])],
+                "background": round(float(res.get("background", 0.0)), 3)}
+        try:
+            events_log.parent.mkdir(parents=True, exist_ok=True)
+            with events_log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(line) + "\n")
+        except OSError:
+            pass
 
     @app.websocket("/stream")
     async def stream(ws: WebSocket) -> None:
@@ -95,22 +139,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             while True:
                 msg = await ws.receive_json()
                 if msg.get("type") == "start":
-                    session = StreamingRecognizer(bundle, segmenter_cfg, int(msg["width"]), int(msg["height"]))
+                    session = StreamingRecognizer(bundle, segmenter_cfg, int(msg["width"]), int(msg["height"]), store.bank)
                     continue
                 if msg.get("type") != "frame" or session is None:
                     continue
-                pose = np.asarray(msg["pose"], np.float32) if msg.get("pose") else None
-                if pose is not None and pose.shape[1] == 3:
-                    pose = np.concatenate([pose, np.ones((len(pose), 1), np.float32)], axis=1)
-                detected = [np.asarray(h["landmarks"], np.float32) for h in msg.get("hands", [])][:2]
-                hands, present, _ = assign_hands(
-                    detected, [h.get("handedness") or "" for h in msg.get("hands", [])],
-                    [h.get("score", 1.0) for h in msg.get("hands", [])], pose, False,
-                )
-                frame = Frame(float(msg["t"]), hands, present,
-                              pose if pose is not None else np.zeros((schema.NUM_POSE_LANDMARKS, 4), np.float32),
-                              pose is not None)
-                event = session.push(frame)
+                event = session.push(parse_frame(msg))
+                if event and event["event"] in ("sign_ended", "too_short"):
+                    log_sign(event)
                 if event:
                     if "guess" in event:
                         event["guess"]["label"] = readable(event["guess"]["sign"])
@@ -122,6 +157,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await ws.send_json(event)
         except WebSocketDisconnect:
             return
+
+    @app.get("/recordings")
+    def recordings() -> dict:
+        signs = store.summary()
+        for s in signs:
+            s["label"] = readable(s["sign"])
+        return {"total": sum(s["recordings"] for s in signs), "signs": signs,
+                "custom_words": [{"sign": w, "label": readable(w), "examples": n}
+                                 for w, n in zip(store.bank.labels, store.bank.counts)]}
+
+    @app.post("/recordings")
+    def add_recording(req: RecordingRequest) -> dict:
+        try:
+            frames = [parse_frame(f) for f in req.frames]
+            saved = store.add(req.label, req.signer, frames, req.width, req.height)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid recording: {exc}") from exc
+        saved["label_readable"] = readable(saved["label"])
+        saved["custom_active"] = saved["label"] in store.bank.labels
+        saved["in_model"] = saved["label"] in store.known
+        return saved
+
+    @app.delete("/recordings/{sample_id}")
+    def delete_recording(sample_id: str) -> dict:
+        if not store.delete(sample_id):
+            raise HTTPException(status_code=404, detail="recording not found")
+        return {"deleted": sample_id}
 
     @app.post("/predict", response_model=PredictResponse)
     def predict(req: PredictRequest) -> dict:

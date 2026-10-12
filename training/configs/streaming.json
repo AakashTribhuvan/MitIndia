@@ -10,7 +10,7 @@
   "buffer_s": 12.0,
   "commit_threshold": 0.7,
   "margin": 0.0,
-  "tta": 3,
+  "tta": 1,
   "cooldown_s": 1.0,
   "provisional_s": 0.5
 }

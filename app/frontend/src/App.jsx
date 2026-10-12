@@ -9,6 +9,7 @@ import CommunicatePage from './pages/CommunicatePage'
 import LearnPage from './pages/LearnPage'
 import PracticePage from './pages/PracticePage'
 import ProgressPage from './pages/ProgressPage'
+import RecordPage from './pages/RecordPage'
 
 export default function App() {
   /**
@@ -73,6 +74,7 @@ export default function App() {
             />
           )}
           {activeTab === 'progress' && <ProgressPage onNavigate={handleNavigate} />}
+          {activeTab === 'record' && <RecordPage />}
         </main>
 
         {/* Global Footer */}

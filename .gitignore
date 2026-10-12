@@ -19,9 +19,13 @@ data/external/
 data/processed/
 data/extracted_landmarks/
 checkpoints/
-experiments/
+# training runs, logs, reports (root folder only, so training/configs/experiments is kept)
+/experiments/
 runs/
 training/assets/mediapipe/*.task
+
+# Signs recorded in the app carry the recorder's name: stay on this machine
+data/metadata/manifest_app.csv
 
 # OS / editor
 .DS_Store
@@ -29,3 +33,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.egg-info/
+
+# Dataset manifests and split CSVs stay local (shared separately, see data/README.md)
+data/metadata/

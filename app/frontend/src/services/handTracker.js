@@ -106,7 +106,7 @@ class HandTrackerService {
     await this.initialize()
 
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: 'user' },
       audio: false
     })
     this.stream = stream
@@ -133,7 +133,15 @@ class HandTrackerService {
       this.lastTimestamp = timestamp
       try {
         const hands = this.handLandmarker.detectForVideo(video, timestamp)
-        const pose = this.poseLandmarker.detectForVideo(video, timestamp)
+        // The body moves slowly: pose every other frame halves its cost and keeps hands at full rate
+        this.frameCount = (this.frameCount || 0) + 1
+        if (this.frameCount % 2 === 1 || !this.lastPose) {
+          this.lastPose = this.poseLandmarker.detectForVideo(video, timestamp)
+        }
+        const pose = this.lastPose
+        const dt = this.lastFrameAt ? (timestamp - this.lastFrameAt) / 1000 : 0
+        this.lastFrameAt = timestamp
+        if (dt > 0) this.fps = this.fps ? 0.9 * this.fps + 0.1 / dt : 1 / dt
         this.onResultsCallback?.({
           multiHandLandmarks: hands.landmarks || [],
           multiHandedness: (hands.handedness || hands.handednesses || []).map((categories) => ({
@@ -143,7 +151,8 @@ class HandTrackerService {
           poseLandmarks: pose.landmarks?.[0] || null,
           width: video.videoWidth,
           height: video.videoHeight,
-          timestamp
+          timestamp,
+          fps: this.fps || 0
         })
       } catch (err) {
         console.warn('Frame processing exception:', err)
@@ -158,6 +167,9 @@ class HandTrackerService {
    */
   stopCamera() {
     this.isTracking = false
+    this.lastPose = null
+    this.lastFrameAt = 0
+    this.fps = 0
 
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId)

@@ -1,1 +1,1 @@
-"""Model components: landmark encoder, CNN encoder, temporal sequence classifiers."""
+"""Model components: landmark encoder and temporal sequence classifiers."""
