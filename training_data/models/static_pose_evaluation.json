@@ -1,0 +1,183 @@
+{
+  "task": "still-image static-pose nearest-medoid baseline",
+  "warning": "Not a dynamic sign recognizer. Labels and filename-derived source groups are unverified; scores are exploratory and do not establish generalization. Inferred-group holdout rejection thresholds are demo-only estimates. Every source image's horizontal mirror shares its source-group split.",
+  "feature_schema": "mudra_static_pose_v9",
+  "manifest": "training_data\\manifests\\selected_static_samples.csv",
+  "model": "training_data\\models\\static_pose_medoids.npz",
+  "classes": [
+    "FOOD",
+    "HELP",
+    "I_ME_MINE_MY",
+    "WHAT",
+    "YOU"
+  ],
+  "profiles": [
+    {
+      "label": "FOOD",
+      "hand_count": 1
+    },
+    {
+      "label": "FOOD",
+      "hand_count": 2
+    },
+    {
+      "label": "HELP",
+      "hand_count": 2
+    },
+    {
+      "label": "I_ME_MINE_MY",
+      "hand_count": 1
+    },
+    {
+      "label": "I_ME_MINE_MY",
+      "hand_count": 2
+    },
+    {
+      "label": "WHAT",
+      "hand_count": 1
+    },
+    {
+      "label": "WHAT",
+      "hand_count": 2
+    },
+    {
+      "label": "YOU",
+      "hand_count": 1
+    },
+    {
+      "label": "YOU",
+      "hand_count": 2
+    }
+  ],
+  "accepted_samples": 506,
+  "accepted_original_samples": 274,
+  "accepted_mirrored_augmentations": 232,
+  "class_inferred_filename_group_counts": {
+    "FOOD": 10,
+    "HELP": 9,
+    "I_ME_MINE_MY": 35,
+    "WHAT": 8,
+    "YOU": 11
+  },
+  "accepted_samples_by_split": {
+    "FOOD": {
+      "train": 10,
+      "validation": 25,
+      "test": 3
+    },
+    "HELP": {
+      "train": 23,
+      "validation": 2,
+      "test": 14
+    },
+    "I_ME_MINE_MY": {
+      "train": 143,
+      "validation": 9,
+      "test": 25
+    },
+    "WHAT": {
+      "train": 41,
+      "validation": 4,
+      "test": 6
+    },
+    "YOU": {
+      "train": 152,
+      "validation": 24,
+      "test": 25
+    }
+  },
+  "test_samples_evaluated": 39,
+  "test_accuracy": 0.5128205128205128,
+  "rejection_threshold_by_profile": {
+    "FOOD:1_hands": 7.902752923965454,
+    "FOOD:2_hands": null,
+    "HELP:2_hands": 16.22085189819336,
+    "I_ME_MINE_MY:1_hands": 9.842043304443362,
+    "I_ME_MINE_MY:2_hands": 25.923916244506838,
+    "WHAT:1_hands": 13.646150016784672,
+    "WHAT:2_hands": null,
+    "YOU:1_hands": 10.22507381439209,
+    "YOU:2_hands": 23.363004684448242
+  },
+  "rejection_threshold_source_by_profile": {
+    "FOOD:1_hands": "inferred_group_holdout_p90_experimental",
+    "FOOD:2_hands": "unavailable",
+    "HELP:2_hands": "inferred_group_holdout_p90_experimental",
+    "I_ME_MINE_MY:1_hands": "inferred_group_holdout_p90_experimental",
+    "I_ME_MINE_MY:2_hands": "inferred_group_holdout_p90_experimental",
+    "WHAT:1_hands": "inferred_group_holdout_p90_experimental",
+    "WHAT:2_hands": "unavailable",
+    "YOU:1_hands": "inferred_group_holdout_p90_experimental",
+    "YOU:2_hands": "inferred_group_holdout_p90_experimental"
+  },
+  "required_hand_count_by_class": {
+    "FOOD": [
+      1,
+      2
+    ],
+    "HELP": [
+      2
+    ],
+    "I_ME_MINE_MY": [
+      1,
+      2
+    ],
+    "WHAT": [
+      1,
+      2
+    ],
+    "YOU": [
+      1,
+      2
+    ]
+  },
+  "required_face_anchor_by_class": {
+    "FOOD": true,
+    "HELP": false,
+    "I_ME_MINE_MY": false,
+    "WHAT": false,
+    "YOU": false
+  },
+  "confusion_matrix": {
+    "FOOD": {
+      "FOOD": 2,
+      "HELP": 0,
+      "I_ME_MINE_MY": 0,
+      "WHAT": 0,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "HELP": {
+      "FOOD": 2,
+      "HELP": 1,
+      "I_ME_MINE_MY": 1,
+      "WHAT": 3,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "I_ME_MINE_MY": {
+      "FOOD": 0,
+      "HELP": 1,
+      "I_ME_MINE_MY": 9,
+      "WHAT": 2,
+      "YOU": 1,
+      "UNKNOWN": 0
+    },
+    "WHAT": {
+      "FOOD": 1,
+      "HELP": 0,
+      "I_ME_MINE_MY": 1,
+      "WHAT": 2,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "YOU": {
+      "FOOD": 1,
+      "HELP": 1,
+      "I_ME_MINE_MY": 3,
+      "WHAT": 2,
+      "YOU": 6,
+      "UNKNOWN": 0
+    }
+  }
+}

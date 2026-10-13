@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f3efe7">
+    <meta name="description" content="A local MUDRA studio for tuning sign activity boundaries.">
+    <title>MUDRA — Sign boundary studio</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="MUDRA Studio home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-name">MUDRA<span class="brand-dot">.</span></span>
+        <span class="brand-divider"></span>
+        <span class="brand-section">STATIC SIGN LAB</span>
+      </a>
+      <div class="topbar-meta">
+        <span class="local-lock"><span class="lock-icon">●</span> LOCAL SESSION</span>
+        <span class="version-tag">FIELD NOTES / 01</span>
+      </div>
+    </header>
+
+    <main>
+      <nav class="view-tabs" role="tablist" aria-label="Prototype views">
+        <button class="view-tab is-active" id="studio-tab" type="button" role="tab"
+          aria-selected="true" aria-controls="studio-view" data-view="studio-view">Studio</button>
+        <button class="view-tab" id="learning-tab" type="button" role="tab"
+          aria-selected="false" aria-controls="learning-view" data-view="learning-view">Learning</button>
+      </nav>
+      <div class="page-view" id="studio-view" role="tabpanel" aria-labelledby="studio-tab">
+      <section class="intro">
+        <div class="intro-copy">
+          <p class="eyebrow"><span class="eyebrow-line"></span> LIVE STATIC-POSE EXPERIMENT</p>
+          <h1>Hold a pose.<br><em>See a match.</em></h1>
+          <p class="intro-description">
+          Try the sample classes in front of the connected camera. This is an experimental
+          still-pose matcher—not a validated ISL translator.
+          </p>
+        </div>
+        <div class="session-state" aria-live="polite">
+          <span class="session-label">SESSION STATUS</span>
+          <span class="session-value"><i id="connection-dot"></i><b id="connection-state">CONNECTING</b></span>
+          <span class="session-hint" id="connection-hint">Opening local camera stream</span>
+        </div>
+      </section>
+
+      <section class="quick-start" aria-label="Getting started">
+        <div class="quick-start-heading">
+          <span class="quick-start-icon" aria-hidden="true">✳</span>
+          <div>
+            <p class="card-kicker">YOUR FIRST SESSION</p>
+            <h2>Three small steps to try a pose</h2>
+          </div>
+        </div>
+        <ol class="quick-steps">
+          <li><span class="step-number">01</span><span><strong>Frame your hands</strong><small>Keep your shoulders and signing hand visible.</small></span></li>
+          <li><span class="step-number">02</span><span><strong>Hold one pose</strong><small>Stay still for a moment while the match settles.</small></span></li>
+          <li><span class="step-number">03</span><span><strong>Read the result</strong><small>Unknown means the model is not confident enough.</small></span></li>
+        </ol>
+      </section>
+
+      <section class="workspace" aria-label="Live sign activity workspace">
+        <div class="main-column">
+          <div class="live-layout">
+          <article class="video-card">
+            <div class="video-heading">
+              <div>
+                <p class="card-kicker">01 / LIVE VIEW</p>
+                <h2>Live camera &amp; pose landmarks</h2>
+              </div>
+              <span class="live-pill"><i></i> LIVE</span>
+            </div>
+            <div class="video-stage">
+              <img id="camera-feed" data-stream-src="/stream.mjpg" alt="Live mirrored camera preview with tracking overlays">
+              <div class="video-placeholder" id="video-placeholder">
+                <svg class="placeholder-art" viewBox="0 0 220 150" role="img" aria-label="Illustration of a person with tracked hand and body landmarks">
+                  <path class="art-body" d="M82 124 91 82 75 63 54 89M91 82 111 82 137 58 157 75M91 82 110 112M110 112 106 139M110 112 124 139" />
+                  <path class="art-head" d="M87 33c0-13 9-22 21-22s21 9 21 22-9 22-21 22-21-9-21-22Z" />
+                  <path class="art-torso" d="m91 58 20 0 10 24-30 0Z" />
+                  <path class="art-hand" d="M151 76v-16m6 16V54m6 20V58m6 19V65m-18 11 15 3" />
+                  <g class="art-joints">
+                    <circle cx="111" cy="33" r="3"/><circle cx="91" cy="58" r="3"/><circle cx="111" cy="58" r="3"/>
+                    <circle cx="91" cy="82" r="3"/><circle cx="121" cy="82" r="3"/><circle cx="75" cy="63" r="3"/>
+                    <circle cx="54" cy="89" r="3"/><circle cx="137" cy="58" r="3"/><circle cx="157" cy="75" r="3"/>
+                    <circle cx="110" cy="112" r="3"/><circle cx="106" cy="139" r="3"/><circle cx="124" cy="139" r="3"/>
+                  </g>
+                  <circle class="art-orbit" cx="111" cy="78" r="61" />
+                </svg>
+                <strong>Let’s get your camera in view</strong>
+                <span>Start the local Python tracker; your video stays on this device.</span>
+              </div>
+              <div class="video-state-chip" id="video-state-chip">WAITING</div>
+              <div class="video-corner">MUDRA · LOCAL TRACKING</div>
+            </div>
+            <div class="video-footer">
+              <div class="legend">
+                <span><i class="legend-box legend-start"></i>Candidate</span>
+                <span><i class="legend-box legend-active"></i>In action</span>
+                <span><i class="legend-box legend-static"></i>Static hold</span>
+              </div>
+              <span class="privacy-note"><span aria-hidden="true">◉</span> Live stream · not recorded</span>
+            </div>
+          </article>
+
+          <div class="readouts">
+            <article class="readout-card readout-primary">
+              <span class="readout-label">BOUNDARY STATE</span>
+              <div class="readout-value"><span id="activity-state">IDLE</span><small id="activity-mode">—</small></div>
+              <span class="readout-caption" id="state-caption">Waiting for a clear signing movement</span>
+            </article>
+            <article class="readout-card">
+              <span class="readout-label">SEGMENT TIME</span>
+              <div class="readout-value"><span id="segment-time">0.0</span><small>SEC</small></div>
+              <span class="readout-caption">From first sustained activity</span>
+            </article>
+            <article class="readout-card">
+              <span class="readout-label">WRIST ACTIVITY</span>
+              <div class="readout-value"><span id="wrist-speed">0.00</span><small>WIDTHS / SEC</small></div>
+              <span class="readout-caption" id="raised-status">Hands not raised</span>
+            </article>
+            <article class="readout-card">
+              <span class="readout-label">TRACKING QUALITY</span>
+              <div class="readout-value"><span id="hands-count">0</span><small>HANDS · <b id="fps-value">0</b> FPS</small></div>
+              <span class="readout-caption" id="resolution-value">Camera size pending</span>
+            </article>
+            <article class="readout-card readout-recognition">
+              <span class="readout-label">STATIC-POSE MATCH</span>
+              <div class="readout-value"><span id="recognition-label">OFF</span></div>
+              <span class="readout-caption" id="recognition-caption">Run with --static-demo to try live labels.</span>
+            </article>
+          </div>
+          </div>
+
+          <aside class="field-note">
+            <span class="note-symbol">✳</span>
+            <p><strong>Prototype note</strong> Labels come from unverified image folders. The matcher
+              needs a stable, tracked still pose; dynamic signs and sentence translation are not recognized.</p>
+          </aside>
+        </div>
+
+        <aside class="control-card" aria-labelledby="controls-title">
+          <div class="control-heading">
+            <div>
+              <p class="card-kicker">02 / FIND YOUR RHYTHM</p>
+              <h2 id="controls-title">Boundary controls</h2>
+            </div>
+            <span class="slider-glyph" aria-hidden="true">≋</span>
+          </div>
+          <p class="control-intro">Adjust while signing. Changes take effect immediately and reset when this session closes.</p>
+
+          <div class="control-list">
+            <label class="slider-control" for="start_hold">
+              <span class="slider-title">Start confirmation <output id="start_hold_value">0.15 s</output></span>
+              <input id="start_hold" type="range" min="0.05" max="1" step="0.05">
+              <span class="slider-help">How long activity must continue before a sign begins.</span>
+            </label>
+
+            <label class="slider-control" for="stop_hold">
+              <span class="slider-title">Rest confirmation <output id="stop_hold_value">0.70 s</output></span>
+              <input id="stop_hold" type="range" min="0.2" max="2" step="0.05">
+              <span class="slider-help">Raise this to avoid splitting signs during a brief pause.</span>
+            </label>
+
+            <label class="slider-control" for="mode_hold">
+              <span class="slider-title">Mode change delay <output id="mode_hold_value">0.45 s</output></span>
+              <input id="mode_hold" type="range" min="0.1" max="1.5" step="0.05">
+              <span class="slider-help">Movement must persist this long before the label switches between dynamic and static.</span>
+            </label>
+
+            <label class="slider-control" for="movement_threshold">
+              <span class="slider-title">Movement sensitivity <output id="movement_threshold_value">1.00</output></span>
+              <input id="movement_threshold" type="range" min="0.2" max="4" step="0.1">
+              <span class="slider-help">Higher values ignore small wrist shifts and visual jitter.</span>
+            </label>
+
+            <label class="slider-control" for="raised_below_shoulder">
+              <span class="slider-title">Raised-hand zone <output id="raised_below_shoulder_value">0.55</output></span>
+              <input id="raised_below_shoulder" type="range" min="0" max="1.5" step="0.05">
+              <span class="slider-help">How far below shoulder level hands may be and still count as held.</span>
+            </label>
+          </div>
+
+          <div class="controls-footer">
+            <span id="settings-status" aria-live="polite">Settings ready</span>
+            <button id="reset-settings" type="button">Reset recommended values <span aria-hidden="true">↺</span></button>
+          </div>
+          <div class="tuning-tip">
+            <span>FIELD TIP</span>
+            <p>If the label flickers, increase <b>Mode change delay</b>. If one sign splits during a pause, increase <b>Rest confirmation</b>.</p>
+          </div>
+        </aside>
+      </section>
+      </div>
+
+      <section class="page-view learning-view" id="learning-view" role="tabpanel"
+        aria-labelledby="learning-tab" hidden>
+        <section class="intro learning-intro">
+          <div class="intro-copy">
+            <p class="eyebrow"><span class="eyebrow-line"></span> LEARN BY COPYING A REFERENCE</p>
+            <h1>See the pose.<br><em>Try it yourself.</em></h1>
+            <p class="intro-description">
+              Study a still from the selected image set, copy the pose, and hold it in the camera.
+              The live match is experimental and the image-folder labels are not yet verified.
+            </p>
+          </div>
+          <div class="session-state">
+            <span class="session-label">YOUR PRACTICE SET</span>
+            <span class="session-value"><b id="learning-progress">LOADING</b></span>
+            <span class="session-hint">One accepted reference from each inferred image group.</span>
+          </div>
+        </section>
+
+        <div class="learning-layout">
+          <article class="learning-card reference-card">
+            <div class="video-heading">
+              <div>
+                <p class="card-kicker">01 / REFERENCE POSE</p>
+                <h2 id="learning-label">Loading a sign…</h2>
+              </div>
+              <span class="version-tag" id="learning-index"></span>
+            </div>
+            <div class="reference-meaning">
+              <span>ENGLISH FOLDER LABEL · UNVERIFIED</span>
+              <strong id="learning-meaning">Loading sign…</strong>
+              <small>This is the label attached to the image, not a verified dictionary gloss.</small>
+            </div>
+            <div class="reference-stage">
+              <img id="learning-image" alt="Reference still image for the current practice sign" hidden>
+              <div class="reference-placeholder" id="learning-placeholder">
+                <strong>Preparing your practice set</strong>
+                <span>Accepted reference images are loaded from the local dataset.</span>
+              </div>
+            </div>
+            <div class="learning-card-footer">
+              <p id="learning-note">Folder label only · gloss and static/dynamic status unverified.</p>
+              <button id="next-learning" type="button" class="primary-button">Show another sign <span aria-hidden="true">→</span></button>
+            </div>
+          </article>
+
+          <article class="learning-card practice-card">
+            <div class="video-heading">
+              <div>
+                <p class="card-kicker">02 / YOUR TURN</p>
+                <h2>Copy and hold the pose</h2>
+              </div>
+              <span class="live-pill"><i></i> CAMERA</span>
+            </div>
+            <div class="video-stage learning-video-stage">
+              <img id="learning-camera-feed" data-stream-src="/stream.mjpg"
+                alt="Live mirrored camera preview with tracking overlays">
+              <svg id="learning-guide" class="learning-guide" aria-hidden="true" hidden>
+                <g id="learning-guide-markers"></g>
+              </svg>
+              <div id="learning-guide-badge" class="learning-guide-badge" hidden></div>
+              <div class="video-state-chip">LIVE PRACTICE</div>
+            </div>
+            <p id="learning-guide-caption" class="learning-guide-caption" aria-live="polite">
+              Choose a reference to show its expected hand position.
+            </p>
+            <div class="learning-result" aria-live="polite">
+              <span class="readout-label">EXPERIMENTAL MATCH</span>
+              <strong id="learning-result-label">Waiting for a static hold</strong>
+              <span id="learning-result-caption">Keep your shoulders and signing hand visible.</span>
+            </div>
+          </article>
+        </div>
+        <aside class="field-note learning-warning">
+          <span class="note-symbol">✳</span>
+          <p><strong>Learning-set note</strong> These are still frames from folders named with English glosses, not a verified dictionary.
+            Some signs may require movement, and <code>I_ME_MINE_MY</code> may combine multiple meanings.</p>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <span>MUDRA / SIGN BOUNDARY EXPERIMENT</span>
+      <span>Made for clearer communication, one frame at a time.</span>
+      <span id="footer-resolution">LOCAL · PRIVATE · IN PROGRESS</span>
+    </footer>
+  </body>
+</html>
