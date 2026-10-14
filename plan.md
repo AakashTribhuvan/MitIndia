@@ -264,6 +264,62 @@ memorize a tiny training subset as a software sanity check, and then evaluate on
 clips plus unknown/background examples. A high score from four highly related clips is not proof
 that the vocabulary is learned robustly.
 
+### Agreed video pilot — isolated sign segments and timing (2026-10-14)
+
+The user-approved first task is to extract individual signs from sentence-level source clips, not
+to assign the whole sentence folder label to every sign or train one sentence class. The newly
+added `training_data/Videos_Sentence_Level/` collection currently contains 101 phrase folders,
+687 videos, and approximately 7.1 GiB. In the inspected sample folders, videos decode at 25 fps
+but have different resolutions (240x320 and 1920x1080) and durations (1.0–6.24 seconds). This is a
+preliminary sample, not a replacement for a complete inventory.
+
+Only after review, shortlist candidate glosses from `hi how are you`, `thank you so much`, and
+`help me` for HELLO, THANK-YOU, and HELP. These folder/gloss associations are hypotheses: a fluent
+reviewer must verify each sign's actual form and meaning in each clip, and mark absent, ambiguous,
+or poor-tracking examples as rejected/uncertain. Never use a video filename such as `free` to
+override its parent folder or to assert that it contains an isolated FREE sign.
+
+For every accepted sign instance, preserve the unchanged source video and record its stable clip
+ID, provisional phrase folder, reviewed gloss/variant, exact onset and offset timestamps, optional
+meaningful motion-phase timestamps, signer/session IDs (pseudonymous where possible), source and
+consent/license review status, and technical metadata. Do not invent unknown identities or
+provenance. Keep the original sentence recording linked to each derived segment. Phase markers
+(such as preparation, stroke, contact/hold, and return) are gloss-specific and optional where a
+reviewer cannot identify them consistently; do not impose one phase template on every sign.
+
+Use consistent timestamp-based frame sampling and extract ordered MediaPipe pose/hand landmarks,
+per-landmark visibility, missing/tracking-quality masks, and frame timestamps into versioned
+numeric sequence files. Retain the source video and render selected frames/skeletons with segment
+and phase markers for review; individual frames are not independent training examples. Keep each
+segment's natural duration and the true time between its frames. Do not time-stretch clips or force
+different sign instances to the same wall-clock duration. Preserve variable sequence lengths and
+provide total duration and reviewed phase durations separately so a later model can test whether
+timing adds value to the motion path.
+
+Before scaling beyond these candidate classes, compare the same sequence baseline with and without
+duration/phase-timing features. Use actual repetitions performed at varied natural speeds, not
+synthetically sped-up copies, to assess whether timing helps distinguish signs without making the
+system brittle to a signer's pace. Keep the sentence-level originals for later continuous-stream
+tests; do not treat phrase-level English labels as per-sign supervision.
+
+**Video pilot verification gates:**
+
+1. Inventory all source files (decode status, duration, frame rate, dimensions, hash, and folder);
+   verify provenance/permissions and reviewer labels before training.
+2. Validate annotation bounds and phase order against video playback, and replay extracted
+   landmark overlays so tracking failures are visible and have explicit reject/uncertain reasons.
+   Confirm sequence timestamps are ordered, segment duration is preserved, and saved features
+   reload deterministically.
+3. Freeze source/signer/session-grouped train/validation/test splits. Keep every segment and
+   derivative from one source recording in a single split. If there are too few known independent
+   groups, call the result a pipeline demonstration and do not claim signer-independent accuracy.
+4. Check tiny-subset overfit and checkpoint reload, then report per-class precision/recall and
+   confusion, unknown/rest/transition false accepts, boundary timing error, landmark coverage,
+   inference time, and the path-only versus path-plus-timing comparison.
+5. Only after offline gates pass, test a real-time webcam session with new repetitions at varied
+   natural speeds and between-sign rests. Report live results separately; passing offline replay
+   does not establish live-camera performance.
+
 The generated CSV is the review worksheet. Its `label`, `verified_gloss`, `sign_motion`,
 `source_clip_id`, `frame_index_or_timestamp`, `signer_id`, `session_id`, and `source_group` fields
 can be completed/corrected after inspection; set `annotation_status`, `review_status`,
@@ -271,6 +327,38 @@ can be completed/corrected after inspection; set `annotation_status`, `review_st
 family so nearby numbered files stay together; replace it with the actual shared source-video/
 performance ID. Re-running `prepare` preserves those human-edited fields and recomputes features,
 tracking metrics, and grouped splits.
+
+### Approved product integration — Video Lab (2026-10-14; not implemented)
+
+The user reported the separate video workflow was not working and approved a dedicated **Video Lab**
+tab for dynamic-sign work, separate from the static-pose experiment. Integrate it into the existing
+camera dashboard (normally port 8765); do not require the user to launch a second server as the
+normal Video Lab experience.
+
+The tab has three explicit areas:
+
+- **Video tests:** select and replay source videos; once sequence extraction and a model are ready,
+  run predictions on reviewed isolated segments. Show segment/gloss review status and tracking
+  quality alongside results. Before a model is ready, make this playback/sequence diagnostics only
+  and state **dynamic model not trained**.
+- **Live test:** use the existing live camera stream and tracker. Show landmarks, activity or
+  boundary state, sequence quality and model readiness. Do not display a dynamic gloss prediction
+  before offline evaluation and live testing gates pass.
+- **Learning:** a menu/library of reviewer-approved example videos, with confirmed gloss/variant,
+  sign and optional phase boundaries, plus useful playback/scrubbing. Never use the sentence folder
+  or filename as a confirmed gloss or teach unreviewed clips as ground truth.
+
+The standalone `video_review.py` is an interim local annotation utility, not the integrated Video
+Lab. It runs at port 8766 only while its separate process is open. One inspected 240x320 MP4 codec
+was not natively playable in the browser; the reviewer uses OpenCV-decoded-frame playback as a
+fallback. The integrated experience must provide this fallback or clearly report decode failure,
+without changing/transcoding the supplied source.
+
+**Integration gate:** the static-pose dashboard remains unchanged; prerecorded clips can be selected
+and sought; live mode uses the existing tracker; Learning lists only reviewed examples; and every
+view reflects its actual readiness without mock predictions. Then continue through the video-pilot
+verification gates above. No dynamic prediction is a product feature until reviewed labeled
+sequences pass grouped offline evaluation and live tests on new natural-speed repetitions.
 
 ### Stage 1 — Establish the task and leakage-safe split
 

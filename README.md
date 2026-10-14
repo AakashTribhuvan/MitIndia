@@ -128,6 +128,38 @@ The Awwwards 2018/2019 archive pages were checked, but their dynamic listings di
 individual winning projects in this environment; this is an era-inspired original layout, not a
 recreation of a specific award winner.
 
+## Review sentence videos and mark sign boundaries
+
+Run the standalone, loopback-only video reviewer without opening the webcam tracker:
+
+```powershell
+python video_review.py
+```
+
+It opens `http://127.0.0.1:8766/`, lists videos under
+`training_data/Videos_Sentence_Level/`, and serves their original bytes read-only with browser
+seeking enabled. If a browser cannot play a source codec, the reviewer falls back to OpenCV-decoded
+frame seeking and playback; this does not transcode or replace the source. Search by phrase folder
+or filename, play/pause/scrub to set each sign's actual
+start and end, enter the reviewer-confirmed gloss, and optionally mark meaningful motion phases at
+the playhead. Add signer/session IDs only when known; the folder label is displayed as provisional
+context and is never copied into the gloss automatically. Provenance, consent/license, acceptance
+and notes fields are per segment. Existing annotations can be reopened and edited.
+
+Saved rows go to `training_data/manifests/video_sign_segments.csv`; source videos are not modified.
+Times are validated against decoded video duration and phase timestamps must be ordered within the
+segment. The manifest records a source path ID and SHA-256 at save time. An `accepted` segment is
+not eligible for training unless its gloss and provenance/consent are also reviewed; uncertain or
+impermissible data must remain rejected/excluded. The app binds only to `127.0.0.1` and does not
+upload videos or annotations.
+
+This is currently a separate annotation/replay process, not a dashboard tab; keep its terminal open
+while using it. No annotations have been saved, and there is no extracted temporal dataset or
+trained dynamic-sign model yet. The approved next step is an integrated **Video Lab** tab in the
+main dashboard for prerecorded-video testing, live-camera diagnostics/testing, and a Learning menu
+of reviewed video examples. Until reviewed sequences and offline model gates are complete, Video
+Lab must not claim dynamic recognition.
+
 ## Still-image static-pose prototype
 
 The current image-only pilot uses ten candidate folders `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`,

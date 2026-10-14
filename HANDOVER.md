@@ -1,6 +1,6 @@
 # MUDRA Phone Webcam and Finger Tracking — Handover
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 ## Purpose
 
@@ -111,6 +111,8 @@ signing/FPS result.
 | `tests/test_sign_activity.py` | Synthetic tests for activity debounce, static holds, pauses, and rest-onset boundaries. |
 | `static_sign_prototype.py` | Extracts normalized still-image body/hand pose, writes a quality/provenance CSV, and trains an exploratory nearest-medoid baseline. |
 | `tests/test_static_sign_prototype.py` | Tests filename grouping, grouped splits, geometric normalization, and rejection-threshold behavior. |
+| `video_review.py`, `web/video-review.*` | Standalone local sentence-video reviewer for playback, sign/phase timestamps and annotation CSV; not a trained model or dashboard tab. |
+| `tests/test_video_review.py` | Reviewer API, annotation storage, timestamp bounds and media-range tests. |
 | `requirements.txt` | Python packages used by the original MUDRA project: MediaPipe Tasks and OpenCV. |
 | `models/pose_landmarker_lite.task` | MediaPipe pose model, copied from the existing MUDRA project. |
 | `models/hand_landmarker.task` | MediaPipe hand model copied into this prototype for 21-point finger tracking. |
@@ -119,6 +121,27 @@ signing/FPS result.
 | `README.md` | Install and run steps plus the current Camo troubleshooting notes. |
 | `docs/architecture.md` | Current signal path, boundaries and diagnosis. |
 | `plan.md` | Staged, measurable data-audit and model-validation plan for the future ISL video collection. |
+
+The standalone reviewer is a separate process on port 8766. Run `python video_review.py` and keep
+its terminal open while using `http://127.0.0.1:8766/`; closing the process stops the reviewer.
+Browser smoke tests found native playback worked for one 1920x1080 MP4, while a 240x320 MP4 codec
+needed the reviewer's OpenCV-decoded-frame fallback. Playback/seek fallback and annotation-save
+behavior were tested, but no actual annotations have been saved. The user reported the separate
+workflow was not working and approved a dedicated Video Lab tab in the main dashboard; the approved
+integration and handoff tasks are recorded in [plan.md](plan.md) below.
+
+**Handover state:** the Video Lab tab, dynamic sequence extractor/model, and reviewed-example
+learning library are not implemented. The standalone reviewer is not the Video Lab. Dynamic
+recognition must remain visibly "not trained" until reviewed per-sign data exists and passes the
+offline gates. Keep phrase-folder names and video filenames out of prediction labels.
+
+## Worktree and source-data handoff
+
+At handover, the branch is `main` tracking `origin/main`. `HANDOVER.md`, `README.md`, and
+`plan.md` have local documentation edits; the standalone reviewer source/UI/tests and
+`training_data/Videos_Sentence_Level/` are untracked. These changes have not been committed or
+pushed. Preserve the worktree. The sentence-video directory is user-supplied source data: do not
+delete it, modify its videos, or stage/commit/push the raw collection without explicit approval.
 
 The live camera/dashboard path still does not save camera frames or landmarks and does not use the
 main MUDRA recognition backend. An optional live static-pose demo now compares the current
@@ -349,21 +372,52 @@ unannotated copy of the exact same current frame on top of the annotated preview
 still the original live camera image with pose and finger lines drawn over it; there is no separate
 second camera capture.
 
-## Next milestone
+## Next milestone / teammate checklist
 
-Follow [plan.md](plan.md) when the video collection is supplied: first inventory the data, verify
-labels and usage rights, and establish leakage-safe signer/session splits and baselines before
-training. In parallel, validate browser controls and boundary/mode behavior with a signer using
-known static holds, dynamic signs and between-sign rests. Tune for observed false starts, missed
-starts, label flicker and premature stops. Synthetic tests do not establish live-camera accuracy.
-Add opt-in segment capture/export only after boundaries are manually checked and the videos are
-permitted. Keep this work in `MudraPhoneWebcam`, not the separate main `Mudra` project.
+The sentence-video collection is under `training_data/Videos_Sentence_Level/`: 101 phrase folders,
+687 videos, approximately 7.1 GiB at the last inventory. The user approved a separate Video Lab tab
+in the existing dashboard, with prerecorded-video testing, live-stream testing/diagnostics, and a
+Learning menu of reviewed examples. Implement the integrated tab before presenting a second-server
+workflow as the product experience. Keep it separate from the existing still-image static model.
+
+Proceed in this order:
+
+1. Integrate the Video Lab into the existing port-8765 dashboard. Allow video replay/selection,
+   connect live testing to the existing camera stream, and make the Learning menu show only
+   reviewer-approved video examples. Until sequences and an evaluated model exist, show playback,
+   tracking/sequence quality and an explicit "dynamic model not trained" state—no guessed glosses.
+2. Make clip review usable from that workflow. The interim `python video_review.py` reviewer runs
+   separately at `http://127.0.0.1:8766/` and only while its process is open. It writes annotations
+   to `training_data/manifests/video_sign_segments.csv`; no annotations were saved at handover.
+   The standalone player includes decoded-frame fallback for browser-incompatible codecs.
+3. Have an ISL-fluent reviewer verify the candidate glosses, actual sign boundaries, variants,
+   provenance and consent. HELLO from `hi how are you`, THANK-YOU from `thank you so much`, and HELP
+   from `help me` are hypotheses only. Folder and filename text is not per-sign ground truth.
+4. Extract ordered, timestamped landmark sequences with visibility/missing masks and source links
+   from accepted segments. Preserve original videos, variable durations, and natural signing speed.
+5. Run the grouped, offline validation gates in [plan.md](plan.md), including unknown/rest/transition
+   tests and timing ablation. If independent signer/session groups are insufficient, report only a
+   pipeline demonstration. Test live on new natural-speed repetitions only after offline gates pass.
+
+The video reviewer syntax checks and focused tests passed; the full unit suite passed 46 tests at
+the time of its implementation. Browser smoke tests verified listing 687 clips, codec fallback
+seeking, and boundary controls. These tests do not validate ISL labels or model accuracy. Keep this
+work in `MudraPhoneWebcam`, not the separate main `Mudra` project.
 
 Run synthetic tracker, bounding-box, dashboard endpoint and settings tests with
 `python -m unittest discover -s tests`. These verify local logic and HTTP wiring, not real-camera
-accuracy.
+accuracy. Video reviewer and range-serving tests can be run with
+`python -m unittest tests.test_video_review`.
 
 ## Change log
+
+### 2026-10-14
+
+- Added the standalone sentence-video reviewer, including codec fallback, timestamp/phase
+  annotation, provenance fields and CSV persistence. It has not been used to save real annotations.
+- Added the approved Video Lab direction to the plan and handover: integrate video replay, live
+  diagnostics and a reviewed-example learning library in the existing dashboard. No dynamic model
+  or Video Lab tab is implemented yet.
 
 ### 2026-10-13
 
