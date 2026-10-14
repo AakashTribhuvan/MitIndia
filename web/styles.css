@@ -74,7 +74,11 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 .version-tag { color: #8a8f87; }
 
 main { width: min(1600px, 100%); margin: 0 auto; padding: 28px clamp(20px, 4vw, 64px) 48px; }
-.view-tabs { display: flex; gap: 6px; margin-bottom: 25px; border-bottom: 1px solid var(--line); }
+.view-navigation {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-bottom: 25px; border-bottom: 1px solid var(--line);
+}
+.view-tabs { display: flex; gap: 6px; }
 .view-tab {
   position: relative; padding: 11px 16px 13px; border: 0; background: transparent;
   color: #72807c; cursor: pointer; font-size: 12px; font-weight: 600;
@@ -85,6 +89,12 @@ main { width: min(1600px, 100%); margin: 0 auto; padding: 28px clamp(20px, 4vw, 
 }
 .view-tab.is-active { color: var(--teal); }
 .view-tab.is-active::after { background: var(--teal); }
+.view-tab-link {
+  flex: 0 0 auto; padding: 10px 13px; border: 1px solid var(--line); border-radius: 5px;
+  background: var(--card); color: var(--teal); font-size: 11px; font-weight: 700;
+  text-decoration: none;
+}
+.view-tab-link:hover { border-color: var(--teal); background: #f6fbf8; }
 .intro { display: flex; justify-content: space-between; align-items: flex-end; gap: 32px; margin-bottom: 36px; }
 .intro-copy { max-width: 720px; }
 .eyebrow, .card-kicker { margin: 0; color: var(--teal); font-size: 10px; font-weight: 500; }
@@ -274,8 +284,12 @@ h2 { margin: 6px 0 0; color: var(--ink); font-size: 18px; font-weight: 600; lett
 }
 .learning-guide[hidden], .learning-guide-badge[hidden] { display: none; }
 .learning-guide-marker {
-  fill: rgba(226, 166, 61, .13); stroke: #ffc963; stroke-width: 5;
+  fill: rgba(226, 166, 61, .2); stroke: #ffd06f; stroke-width: 6;
   stroke-dasharray: 13 9; vector-effect: non-scaling-stroke;
+}
+.learning-guide-center {
+  fill: #ffd06f; stroke: #172431; stroke-width: 3;
+  vector-effect: non-scaling-stroke;
 }
 .learning-guide-crosshair {
   stroke: #fff5d9; stroke-width: 4; stroke-linecap: round;
@@ -327,6 +341,9 @@ h2 { margin: 6px 0 0; color: var(--ink); font-size: 18px; font-weight: 600; lett
   .topbar-meta { gap: 0; }
   .version-tag { display: none; }
   main { padding: 31px 16px 30px; }
+  .view-navigation { gap: 8px; }
+  .view-tab { padding-inline: 12px; }
+  .view-tab-link { padding: 9px 10px; font-size: 10px; }
   .intro { align-items: flex-start; flex-direction: column; gap: 21px; margin-bottom: 25px; }
   .quick-start { padding: 15px; }
   .quick-steps { grid-template-columns: 1fr; gap: 12px; }

@@ -26,7 +26,41 @@ ASSETS = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/images": ("image-index.html", "text/html; charset=utf-8"),
+    "/image-index.html": ("image-index.html", "text/html; charset=utf-8"),
+    "/image-index.css": ("image-index.css", "text/css; charset=utf-8"),
+    "/image-index.js": ("image-index.js", "text/javascript; charset=utf-8"),
 }
+IMAGE_CONTENT_TYPES = {
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+
+
+def dataset_image_records(dataset_root: Path) -> list[tuple[str, Path, str]]:
+    root = dataset_root.resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Training image folder does not exist: {root}")
+
+    images: list[tuple[str, Path, str]] = []
+    for path in root.rglob("*"):
+        content_type = IMAGE_CONTENT_TYPES.get(path.suffix.lower())
+        if content_type is None or not path.is_file():
+            continue
+        resolved = path.resolve()
+        try:
+            relative_path = resolved.relative_to(root)
+        except ValueError:
+            continue
+        label = relative_path.parts[0] if len(relative_path.parts) > 1 else "Uncategorized"
+        images.append((label, resolved, content_type))
+    return sorted(
+        images,
+        key=lambda image: image[1].relative_to(root).as_posix().casefold(),
+    )
 
 
 class DashboardState:
@@ -107,6 +141,7 @@ class DashboardServer:
         ) = None,
     ):
         self.state = DashboardState(initial_settings)
+        self._dataset_images = dataset_image_records(DATASET_ROOT)
         self._learning_samples: list[tuple[str, Path, int]] = []
         for sample in learning_examples or []:
             label, path = sample[:2]
@@ -147,6 +182,48 @@ class DashboardServer:
                 path = urlsplit(self.path).path
                 if path == "/api/status":
                     self.send_json(200, state.snapshot())
+                    return
+                if path == "/api/dataset/images":
+                    self.send_json(
+                        200,
+                        {
+                            "total": len(server_owner._dataset_images),
+                            "images": [
+                                {
+                                    "id": image_id,
+                                    "label": label,
+                                    "filename": image_path.name,
+                                    "relative_path": image_path.relative_to(
+                                        DATASET_ROOT.resolve()
+                                    ).as_posix(),
+                                    "url": f"/api/dataset/image/{image_id}",
+                                }
+                                for image_id, (label, image_path, _) in enumerate(
+                                    server_owner._dataset_images
+                                )
+                            ],
+                        },
+                    )
+                    return
+                if path.startswith("/api/dataset/image/"):
+                    image_key = path.removeprefix("/api/dataset/image/")
+                    if (
+                        not image_key.isascii()
+                        or not image_key.isdecimal()
+                        or not 0 <= int(image_key) < len(server_owner._dataset_images)
+                    ):
+                        self.send_json(404, {"error": "Dataset image not found."})
+                        return
+                    _, image_path, content_type = server_owner._dataset_images[
+                        int(image_key)
+                    ]
+                    data = image_path.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=3600")
+                    self.end_headers()
+                    self.wfile.write(data)
                     return
                 if path == "/api/learning/next":
                     if not server_owner._learning_samples:

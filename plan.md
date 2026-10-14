@@ -23,6 +23,11 @@ sequences and a temporal similarity method (for example, a carefully evaluated D
 Sentence translation is a separate future task: knowing isolated word signs does not by itself
 recover sign order, grammar, non-manual markers, or sentence meaning.
 
+After dynamic-sign sequences and reviewed sentence glosses are available, evaluate a small language
+model or constrained next-gloss predictor as an optional contextual reranker. Keep visual evidence
+and unknown/rejection decisions authoritative, report the raw visual candidate separately, and test
+for sentence-level gains without allowing context to conceal a weak or incorrect sign match.
+
 ISLRTC's reviewed dictionary videos are a relevant reference for meanings and variants, subject to
 the source's reuse terms. The Kaggle dataset named in the project brief must be audited for language,
 label meaning, signer/source metadata, and license before inclusion; a static alphabet dataset is
@@ -104,19 +109,24 @@ the arm-pose feature; body-relative wrist location remains because signing space
 Automatically accepted samples still require human review: detector confidence and hand size do not
 prove every finger landmark is correct.
 
-The current schema-v9 pilot is intentionally limited to `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`, and
-`WHAT`. Each source image has original and horizontal-mirror extractions grouped together in the
+The current schema-v10 pilot uses `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`, `WHAT`, `HOW`,
+`COLLEGE_SCHOOL`, `NICE`, `THANK`, and `DO`. The five additions have multiple inferred filename
+groups as well as image counts, though their labels remain unverified. Each source image has
+original and horizontal-mirror extractions grouped together in the
 split; only original images are used for validation/test scoring. When hips are not reliably
 visible, features estimate torso center using shoulders and a shoulder-width vertical offset.
 Pose nose/ears (or eyes when ears are unavailable) provide a face anchor; wrist position is encoded
 relative to the nose and face width, with an index-finger direction dot product toward the nose.
 This uses the existing Pose Landmarker model, not a dense face mesh.
 
-The schema-v9 run accepted 506 augmented rows (274 originals and 232 mirrored views); 50 mirrored
-views were rejected because their detected hand count differed from their original. Its 39-image
-original test split scored 51.3% (20/39). This is exploratory evidence only: source groups and
-labels remain unverified, and the score is not a new-signer estimate.
-Schema v9 creates separate medoids and rejection thresholds for each exact detected-hand count.
+The previous schema-v9 run accepted 506 augmented rows and scored 51.3% (20/39); it was replaced
+when the pilot expanded to ten labels. The schema-v10 run accepted 656 augmented rows (351
+originals and 305 mirrored views); 55 mirrored views were rejected because their detected hand
+count differed from their original. Its 55-image original test split scored 36.4% (20/55). This is
+exploratory evidence only: source groups and labels remain unverified, and the score is not a
+new-signer estimate. Several new count-specific profiles have no rejection threshold and are
+withheld from Learning.
+Schema v10 creates separate medoids and rejection thresholds for each exact detected-hand count.
 Live and still-image matching only compares one-hand input to one-hand profiles and two-hand input
 to two-hand profiles; zero is no longer a wildcard. `HELP` is trained only from two-hand examples.
 Current trained profiles include one- and two-hand variants for `FOOD`, `I_ME_MINE_MY`, `WHAT`, and

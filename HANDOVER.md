@@ -130,9 +130,11 @@ The current `training_data/Frames_Word_Level/` inventory is documented in
 there were no video files in that directory. These images are not yet verified as independent
 training clips or as correctly labeled ISL examples.
 
-The current pilot is limited to five candidate folders: `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`, and
-`WHAT`. Schema v9 retains the shoulder-based torso fallback when hips are not reliably visible and
-uses face-relative hand features from the existing Pose Landmarker nose/ears (eyes as fallback).
+The current pilot uses ten candidate folders: `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`, `WHAT`,
+`HOW`, `COLLEGE_SCHOOL`, `NICE`, `THANK`, and `DO`. The additions were selected for multiple
+filename-derived groups as well as image count, but all folder labels remain unverified. Schema v10
+retains the shoulder-based torso fallback when hips are not reliably visible and uses face-relative
+hand features from the existing Pose Landmarker nose/ears (eyes as fallback).
 Each wrist is represented relative to the nose in face-width units, with an index-finger direction
 dot product toward the nose. FOOD predictions are rejected unless the face anchor is available.
 This is a lightweight head-point proxy, not a dense face mesh or expression recognizer.
@@ -157,23 +159,42 @@ source is recorded with one detected hand in the manifest but was detected as tw
 stabilize the raw detector output; do not treat this smoke test as proof of reliable one/two-hand
 live recognition.
 
+Observed 2026-10-14: THANK has worked when signed with the left hand; attempts with the right hand
+were repeatedly classified as FOOD. Handedness is not an explicit model input, but this remains an
+unresolved hand-side/asymmetry problem in the learned geometry and mirror augmentation. Treat this
+as a demo limitation, not a reliable property of either sign.
+
+Optional speech output (`--speak-recognized`) speaks an accepted static-pose label once it remains
+unchanged for 0.5 seconds by default; use `--speech-hold` to adjust the interval. Speech runs on a
+worker thread. Sentence-context prediction is only a future experiment: after dynamic sign
+sequences and reviewed glosses exist, evaluate a constrained next-gloss reranker separately, and
+never let it silently turn an unknown visual match into a recognized sign.
+
 The Learning tab overlays gold circles/crosshairs at the selected prototype's expected wrist
 positions. It projects torso-relative medoid coordinates through the live shoulder/torso anchor and
 shows the expected hand count. It is a position cue, not the reference's full finger shape, and
-requires visible shoulders.
+requires visible shoulders. Targets beyond the camera frame are drawn at the nearest visible edge
+and labeled with their off-frame direction.
 
-The regenerated schema-v9 model accepted 506 rows (274 originals, 232 mirrors) and scored 51.3%
-(20/39) on the original filename-grouped test split. This remains a weak exploratory score:
-labels/source groups are unverified and it does not measure performance on new signers. The live
-demo uses experimental profile-specific group-holdout distance thresholds and does not recognize
-movement.
+The regenerated schema-v10 model accepted 656 rows (351 originals, 305 mirrors); 55 mirrors were
+rejected for changing the detected hand count. It scored 36.4% (20/55) on the original
+filename-grouped test split. This remains a weak exploratory score: labels/source groups are
+unverified and it does not measure performance on new signers. The new DO one-/two-hand profiles
+and THANK one-hand profile have experimental rejection thresholds; COLLEGE_SCHOOL, HOW, NICE
+one-hand, and THANK two-hand profiles do not and are omitted from Learning. The live demo uses
+profile-specific group-holdout distance thresholds and does not recognize movement.
+
+While the dashboard is running, `http://127.0.0.1:8765/images` serves a searchable/filterable index
+of all 1,036 JPGs under `training_data/Frames_Word_Level/`, including folders not selected for
+training. Images are loaded through registered numeric IDs constrained to this dataset root and
+the page uses native lazy image loading.
 
 Product direction: make a reviewed, provenance-backed sign catalog the source of truth and use the
 model as a secondary similarity retriever that can reject unknowns. Keep current small-pilot data
 in versioned NumPy landmark files and the CSV manifest; do not add a vector database at this scale.
 Dynamic signs require ordered sequences; word templates alone do not provide sentence translation.
 
-Try the live static-pose demo (the schema-v9 model is already regenerated; rerun `prepare` and
+Try the live static-pose demo (the schema-v10 model is already regenerated; rerun `prepare` and
 `train` only when the selected source images or manual manifest labels/groups change):
 
 ```powershell

@@ -24,12 +24,15 @@
     </header>
 
     <main>
-      <nav class="view-tabs" role="tablist" aria-label="Prototype views">
-        <button class="view-tab is-active" id="studio-tab" type="button" role="tab"
-          aria-selected="true" aria-controls="studio-view" data-view="studio-view">Studio</button>
-        <button class="view-tab" id="learning-tab" type="button" role="tab"
-          aria-selected="false" aria-controls="learning-view" data-view="learning-view">Learning</button>
-      </nav>
+      <div class="view-navigation">
+        <nav class="view-tabs" role="tablist" aria-label="Prototype views">
+          <button class="view-tab is-active" id="studio-tab" type="button" role="tab"
+            aria-selected="true" aria-controls="studio-view" data-view="studio-view">Studio</button>
+          <button class="view-tab" id="learning-tab" type="button" role="tab"
+            aria-selected="false" aria-controls="learning-view" data-view="learning-view">Learning</button>
+        </nav>
+        <a class="view-tab-link" href="/images">Browse all images <span aria-hidden="true">↗</span></a>
+      </div>
       <div class="page-view" id="studio-view" role="tabpanel" aria-labelledby="studio-tab">
       <section class="intro">
         <div class="intro-copy">

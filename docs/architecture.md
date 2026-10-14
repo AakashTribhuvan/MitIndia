@@ -96,8 +96,9 @@ labeled examples.
 
 ## Optional still-image static-pose demo
 
-`static_sign_prototype.py prepare` extracts Pose/Hand features from five selected image folders
-(`I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`, `WHAT`) and writes a review manifest, feature archive, and
+`static_sign_prototype.py prepare` extracts Pose/Hand features from ten selected image folders
+(`I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`, `WHAT`, `HOW`, `COLLEGE_SCHOOL`, `NICE`, `THANK`, and
+`DO`) and writes a review manifest, feature archive, and
 contact sheets. When hip visibility is too low, the torso center is estimated from the shoulder
 midpoint and shoulder width; this requires both shoulders to pass the visibility gate. Every source image is extracted unmirrored and horizontally
 mirrored; both variants remain in one inferred filename-family split.
@@ -118,7 +119,7 @@ two-hand variants where the data supports them.
 Raw detector counts can still vary: the unchanged `HELP (1).jpg` source is recorded as one hand in
 the manifest but returned two hands in repeated still-image prediction runs. Exact-count matching
 keeps incompatible prototype profiles separate, but it cannot correct an unstable detector count.
-Schema v9 also uses Pose Landmarker head points as a lightweight face anchor: nose relative to the
+Schema v10 also uses Pose Landmarker head points as a lightweight face anchor: nose relative to the
 ears, or the eyes when ears are not visible. Per-hand features include wrist-to-nose location in
 face-width units and an index-finger direction dot product with the wrist-to-nose vector. The same
 anchor is drawn in the live camera preview and its source is recorded in the manifest. This is not a
@@ -140,20 +141,28 @@ variants, permissions, and provenance must be reviewed before catalog entries ar
 authoritative.
 The Studio and Learning tabs share one camera stream; Learning shows an accepted original still and
 compares the target folder label to the live match. It displays the English folder label above the
-reference and explicitly marks it unverified. The Learning camera overlays gold wrist-position
-guides reconstructed from the selected label/count medoid's torso-relative wrist coordinates and
-the live torso anchor. It expects the reference's detected hand count and gives an approximate
-wrist location; it is not a learned attention map and does not render the prototype's finger
-shape. A mirrored augmentation is rejected when it changes the extracted hand count from its
+reference and explicitly marks it unverified. The Learning camera overlays labeled gold targets for
+the selected label/count medoid's torso-relative wrist coordinates, projected through the live
+torso anchor; detected hand landmarks remain visible beneath the targets. The model-guide badge
+stays visible while waiting for pose tracking. The expected handshape is not reconstructed, so this
+is an approximate wrist-position guide only. Targets projected outside the camera frame are clamped
+to the nearest visible edge and labeled with their off-frame direction. A mirrored augmentation is
+rejected when it changes the extracted hand count from its
 original, preventing a one-hand source from training a two-hand profile due to inconsistent
 detection. The current run rejected 50 such mirrored views. When static demo mode is active,
 reference examples are limited to label/count profiles with finite rejection thresholds; the
 two-hand FOOD and WHAT profiles are withheld because their rejection thresholds are unavailable.
 Neither folder labels nor the
 assumption that horizontal mirrors preserve a sign's gloss are verified; movement-dependent signs
-are outside this model's scope. The v9 run accepted 506 extracted variants and scored 51.3% (20/39)
-on inferred-group-held-out original images; this is exploratory and not a new-signer estimate. The
-source groups and labels are unverified, so it is not evidence of usable recognition.
+are outside this model's scope. The v10 run accepted 656 extracted variants (351 originals and 305
+mirrors; 55 mirror count mismatches were rejected) and scored 36.4% (20/55) on original images held
+out by inferred group. This is exploratory and not a new-signer estimate. The source groups and
+labels are unverified, so it is not evidence of usable recognition. Some label/count profiles have
+no reliable rejection threshold and are not shown in Learning.
+
+The dashboard's `/images` page indexes every image under `training_data/Frames_Word_Level`, not just
+the ten training folders. Its JSON API returns safe numeric image IDs for the gallery and serves
+only paths resolved inside the dataset root. Browser thumbnails use native lazy loading.
 
 ## Why Camo can work in Studio but fail in OpenCV
 

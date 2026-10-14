@@ -71,7 +71,18 @@ class StaticSignPrototypeTests(unittest.TestCase):
         self.assertIn("YOU:frame-family", splits)
         self.assertEqual(
             LABELS,
-            ("I_ME_MINE_MY", "YOU", "FOOD", "HELP", "WHAT"),
+            (
+                "I_ME_MINE_MY",
+                "YOU",
+                "FOOD",
+                "HELP",
+                "WHAT",
+                "HOW",
+                "COLLEGE_SCHOOL",
+                "NICE",
+                "THANK",
+                "DO",
+            ),
         )
 
     def test_reviewed_source_group_can_override_filename_guess(self):

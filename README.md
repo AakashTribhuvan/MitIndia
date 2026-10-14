@@ -19,6 +19,11 @@ Open PowerShell in this folder and install the two Python dependencies:
 python -m pip install -r requirements.txt
 ```
 
+For a quick Windows launch, connect Camo Studio and double-click [`start.bat`](start.bat) in this
+folder. It runs the static-pose demo with the known Camo Camera 1 / Media Foundation setup, using
+the sibling `D:\College\MIT_Indian\.venv` environment. Keep the command window open while using the
+camera and dashboard.
+
 List the camera indices OpenCV can read, including frame brightness:
 
 ```powershell
@@ -125,8 +130,10 @@ recreation of a specific award winner.
 
 ## Still-image static-pose prototype
 
-The current image-only pilot uses five candidate folders `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`,
-and `WHAT` under `training_data/Frames_Word_Level/`. These are folder labels, not verified ISL
+The current image-only pilot uses ten candidate folders `I_ME_MINE_MY`, `YOU`, `FOOD`, `HELP`,
+`WHAT`, `HOW`, `COLLEGE_SCHOOL`, `NICE`, `THANK`, and `DO` under
+`training_data/Frames_Word_Level/`. The five additional folders were selected for having multiple
+filename-derived groups as well as useful image counts. These are folder labels, not verified ISL
 glosses; `I_ME_MINE_MY` may combine meanings. Manifest rows begin with `folder_label_unverified`
 and `needs_review`. Extract torso-centered/body-scaled Pose and Hand landmarks, face-relative hand
 position/orientation, quality information, a CSV index, and review contact sheets with:
@@ -159,7 +166,7 @@ midpoint one shoulder-width below the shoulders, needs both shoulders clearly de
 a geometric estimate—not a replacement for framing the upper body. `torso_anchor_source` in the
 manifest records which path was used.
 
-Schema v9 uses the existing Pose Landmarker head points as a face anchor (nose plus ears, falling
+Schema v10 uses the existing Pose Landmarker head points as a face anchor (nose plus ears, falling
 back to eyes). It records each wrist relative to the nose in face-width units and the dot product between the index-finger direction and the
 wrist-to-nose direction. This helps distinguish signs whose hand location/orientation is
 face-relative, such as the candidate FOOD class. FOOD is rejected as unknown when no face anchor is
@@ -214,15 +221,33 @@ live output are experimental—not reliable or validated ISL predictions.
 updates from current pose landmarks; it does not recognize movement or sentence meaning. If
 movement carries a sign's meaning, this still-pose matcher cannot recognize it. Outputs remain
 under `training_data/derived/` and `training_data/models/`.
+Add `--speak-recognized` to speak an accepted label once it remains stable for half a second;
+`--speech-hold 0.4` changes that interval. Speech synthesis runs separately from the camera loop.
 
-The current schema-v9 model was regenerated from 506 accepted augmented rows (274 originals and
-232 mirrors); 50 mirror views were rejected because the tracker changed the detected hand count.
-It scored 51.3% (20/39) on original images in the inferred-group test split.
-Treat this as a weak experiment, not expected live accuracy: labels and filename-derived groups
-remain unverified, and a held-out original is not a substitute for a new signer/session. The
-Learning camera now overlays expected wrist locations from the selected count-specific medoid,
-projected through the live shoulder/torso anchor. This is an approximate positional guide, not a
-complete hand-shape template. Dynamic-sign recognition remains out of scope.
+The schema-v10 model accepted 656 augmented rows (351 originals and 305 mirrors); 55 mirror views
+were rejected because the tracker changed the detected hand count. Its 55-image inferred-group
+test split scored 36.4% (20/55). Treat this as a weak experiment, not expected live accuracy:
+labels and filename-derived groups remain unverified, and a held-out original is not a substitute
+for a new signer/session. Several new label/count profiles have no usable rejection threshold, so
+they remain unavailable in Learning. The Learning camera overlays labeled gold targets for the
+selected count-specific medoid's expected wrist positions, projected through the live
+shoulder/torso anchor; live tracking landmarks remain visible beneath them. The model-guide badge
+stays visible while waiting for pose tracking. This is an approximate positional guide, not a
+complete expected-hand skeleton. Expected wrists projected outside the camera frame are marked at
+the nearest visible edge with a direction label. Dynamic-sign recognition remains out of scope.
+Known live-demo limitation (observed 2026-10-14): THANK has worked for the left hand, while the
+right-hand attempt was repeatedly classified as FOOD. Handedness is not an explicit model feature,
+but the geometric features and current mirror augmentation have not made recognition hand-invariant;
+this is an unresolved asymmetric confusion, not validated behavior.
+
+Future sentence-context idea: after dynamic signs and reviewed gloss sequences are available, test a
+small language model or constrained next-gloss predictor as a separate contextual reranker. It must
+not override weak/unknown visual evidence or be described as recognizing signs; evaluate whether it
+improves sentence-level results without hiding vision errors.
+
+Open `http://127.0.0.1:8765/images` while the dashboard is running to browse all 1,036 JPGs in the
+dataset folder. Search by filename or folder and filter by label; thumbnails load as you scroll.
+This index includes images outside the ten model folders.
 
 The Studio stats are arranged in a high-contrast column beside the camera, with tuning controls
 below. Learning displays the provisional English folder label above its reference image; it is not

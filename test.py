@@ -24,6 +24,7 @@ try:
         _pose_array,
         load_learning_examples,
     )
+    from sign_speech import Pyttsx3Speaker, StablePredictionGate
     from web_dashboard import DashboardServer
 except ImportError as exc:
     missing = exc.name or "a required package"
@@ -534,6 +535,17 @@ def main() -> int:
         default=ROOT / "training_data" / "models" / "static_pose_medoids.npz",
         help="Static-pose model used with --static-demo",
     )
+    parser.add_argument(
+        "--speak-recognized",
+        action="store_true",
+        help="Speak accepted static-sign labels after they remain stable for --speech-hold",
+    )
+    parser.add_argument(
+        "--speech-hold",
+        type=float,
+        default=0.5,
+        help="Stable accepted-prediction time before speaking, in seconds (default: 0.5)",
+    )
     args = parser.parse_args()
 
     if args.capture_width <= 0 or args.capture_height <= 0:
@@ -550,9 +562,10 @@ def main() -> int:
             args.movement_threshold,
             args.raised_below_shoulder,
             args.mode_hold,
+            args.speech_hold,
         )
     ):
-        parser.error("All sign-activity thresholds must be finite numbers")
+        parser.error("All thresholds must be finite numbers")
     if args.start_hold < 0 or args.stop_hold <= 0:
         parser.error("--start-hold must be non-negative and --stop-hold must be positive")
     if args.movement_threshold <= 0 or args.raised_below_shoulder < 0 or args.mode_hold <= 0:
@@ -560,6 +573,10 @@ def main() -> int:
             "--movement-threshold and --mode-hold must be positive and "
             "--raised-below-shoulder non-negative"
         )
+    if args.speech_hold <= 0:
+        parser.error("--speech-hold must be positive")
+    if args.speak_recognized and not args.static_demo:
+        parser.error("--speak-recognized requires --static-demo")
     if not 1 <= args.web_port <= 65535:
         parser.error("--web-port must be between 1 and 65535")
     if args.open_web_ui or args.static_demo:
@@ -601,6 +618,7 @@ def main() -> int:
 
     camera = None
     dashboard = None
+    speaker = None
     dashboard_started = False
     try:
         camera = open_camera(
@@ -643,6 +661,13 @@ def main() -> int:
             mode_hold_s=args.mode_hold,
         )
         prediction_stabilizer = StaticPredictionStabilizer()
+        speech_gate = StablePredictionGate(args.speech_hold) if args.speak_recognized else None
+        if args.speak_recognized:
+            speaker = Pyttsx3Speaker()
+            print(
+                "Speech output enabled; accepted labels must remain stable for "
+                f"{args.speech_hold:.2f}s."
+            )
         previous_wrists = {}
         previous_tracking_time = None
         max_wrist_speed = 0.0
@@ -685,6 +710,8 @@ def main() -> int:
             vision.HandLandmarker.create_from_options(hand_options) as hand_landmarker,
         ):
             while True:
+                if speaker is not None:
+                    speaker.raise_if_failed()
                 ok, frame = camera.read()
                 if not ok or frame is None:
                     raise RuntimeError("The webcam stopped returning frames.")
@@ -782,6 +809,7 @@ def main() -> int:
                     "threshold_source": None,
                     "reason": None,
                 }
+                raw_speech_candidate = None
                 if static_recognizer is not None:
                     static_active = activity_tracker.state == "signing" and mode == "static"
                     if static_active:
@@ -792,6 +820,7 @@ def main() -> int:
                             inference_width,
                             inference_height,
                         )
+                        raw_speech_candidate = raw_prediction.get("prediction")
                         stable_label, prediction_state = prediction_stabilizer.update(
                             timestamp_ms / 1000,
                             raw_prediction.get("prediction"),
@@ -837,6 +866,14 @@ def main() -> int:
                             recognition["state"] = "dynamic"
                         elif activity_tracker.state in ("starting", "ending"):
                             recognition["state"] = activity_tracker.state
+                if speech_gate is not None and speaker is not None:
+                    spoken_label = speech_gate.update(
+                        timestamp_ms / 1000,
+                        raw_speech_candidate,
+                    )
+                    if spoken_label is not None:
+                        speaker.speak(spoken_label)
+
                 if event == "started":
                     if activity_tracker.sign_started_at is None:
                         raise RuntimeError("Sign start event has no start timestamp.")
@@ -968,45 +1005,46 @@ def main() -> int:
                     if (
                         static_recognizer is not None
                         and learning_target is not None
-                        and last_pose
                     ):
                         target_label, target_hand_count = learning_target
-                        guide_pose, guide_visibility = _pose_array(
-                            last_pose,
-                            frame_width,
-                            frame_height,
-                        )
-                        try:
-                            expected_positions = static_recognizer.expected_hand_positions(
-                                target_label,
-                                target_hand_count,
-                                guide_pose,
-                                guide_visibility,
+                        learning_guide = {
+                            "label": target_label,
+                            "expected_hand_count": target_hand_count,
+                            "positions": [],
+                            "reason": "Waiting for body pose tracking.",
+                        }
+                        if last_pose:
+                            guide_pose, guide_visibility = _pose_array(
+                                last_pose,
+                                frame_width,
+                                frame_height,
                             )
-                        except ValueError as exc:
-                            learning_guide = {
-                                "label": target_label,
-                                "expected_hand_count": target_hand_count,
-                                "positions": [],
-                                "reason": str(exc),
-                            }
-                        else:
-                            learning_guide = {
-                                "label": target_label,
-                                "expected_hand_count": target_hand_count,
-                                "positions": [
-                                    {"x": x, "y": y}
-                                    for x, y in expected_positions
-                                ],
-                                "frame_width": frame_width,
-                                "frame_height": frame_height,
-                                "marker_radius": (
-                                    math.hypot(
-                                        *(guide_pose[12, :2] - guide_pose[11, :2])
-                                    )
-                                    * 0.18
-                                ),
-                            }
+                            try:
+                                expected_positions = static_recognizer.expected_hand_positions(
+                                    target_label,
+                                    target_hand_count,
+                                    guide_pose,
+                                    guide_visibility,
+                                )
+                            except ValueError as exc:
+                                learning_guide["reason"] = str(exc)
+                            else:
+                                learning_guide = {
+                                    "label": target_label,
+                                    "expected_hand_count": target_hand_count,
+                                    "positions": [
+                                        {"x": x, "y": y}
+                                        for x, y in expected_positions
+                                    ],
+                                    "frame_width": frame_width,
+                                    "frame_height": frame_height,
+                                    "marker_radius": (
+                                        math.hypot(
+                                            *(guide_pose[12, :2] - guide_pose[11, :2])
+                                        )
+                                        * 0.18
+                                    ),
+                                }
                     encoded_ok, encoded_frame = cv2.imencode(
                         ".jpg",
                         frame,
@@ -1035,12 +1073,18 @@ def main() -> int:
                     key = cv2.waitKey(1) & 0xFF
                     if key in (ord("q"), 27):
                         break
+        if speaker is not None:
+            speaker.close()
+            speaker.raise_if_failed()
+            speaker = None
     except KeyboardInterrupt:
         print("Stopped.")
     except (RuntimeError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     finally:
+        if speaker is not None:
+            speaker.close()
         if dashboard is not None and dashboard_started:
             dashboard.close()
         if camera is not None:

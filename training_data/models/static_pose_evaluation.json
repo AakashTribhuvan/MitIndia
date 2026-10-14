@@ -1,17 +1,38 @@
 {
   "task": "still-image static-pose nearest-medoid baseline",
   "warning": "Not a dynamic sign recognizer. Labels and filename-derived source groups are unverified; scores are exploratory and do not establish generalization. Inferred-group holdout rejection thresholds are demo-only estimates. Every source image's horizontal mirror shares its source-group split.",
-  "feature_schema": "mudra_static_pose_v9",
+  "feature_schema": "mudra_static_pose_v10",
   "manifest": "training_data\\manifests\\selected_static_samples.csv",
   "model": "training_data\\models\\static_pose_medoids.npz",
   "classes": [
+    "COLLEGE_SCHOOL",
+    "DO",
     "FOOD",
     "HELP",
+    "HOW",
     "I_ME_MINE_MY",
+    "NICE",
+    "THANK",
     "WHAT",
     "YOU"
   ],
   "profiles": [
+    {
+      "label": "COLLEGE_SCHOOL",
+      "hand_count": 1
+    },
+    {
+      "label": "COLLEGE_SCHOOL",
+      "hand_count": 2
+    },
+    {
+      "label": "DO",
+      "hand_count": 1
+    },
+    {
+      "label": "DO",
+      "hand_count": 2
+    },
     {
       "label": "FOOD",
       "hand_count": 1
@@ -25,11 +46,35 @@
       "hand_count": 2
     },
     {
+      "label": "HOW",
+      "hand_count": 1
+    },
+    {
+      "label": "HOW",
+      "hand_count": 2
+    },
+    {
       "label": "I_ME_MINE_MY",
       "hand_count": 1
     },
     {
       "label": "I_ME_MINE_MY",
+      "hand_count": 2
+    },
+    {
+      "label": "NICE",
+      "hand_count": 1
+    },
+    {
+      "label": "NICE",
+      "hand_count": 2
+    },
+    {
+      "label": "THANK",
+      "hand_count": 1
+    },
+    {
+      "label": "THANK",
       "hand_count": 2
     },
     {
@@ -49,17 +94,32 @@
       "hand_count": 2
     }
   ],
-  "accepted_samples": 506,
-  "accepted_original_samples": 274,
-  "accepted_mirrored_augmentations": 232,
+  "accepted_samples": 656,
+  "accepted_original_samples": 351,
+  "accepted_mirrored_augmentations": 305,
   "class_inferred_filename_group_counts": {
+    "COLLEGE_SCHOOL": 3,
+    "DO": 7,
     "FOOD": 10,
     "HELP": 9,
+    "HOW": 4,
     "I_ME_MINE_MY": 35,
+    "NICE": 6,
+    "THANK": 8,
     "WHAT": 8,
     "YOU": 11
   },
   "accepted_samples_by_split": {
+    "COLLEGE_SCHOOL": {
+      "train": 11,
+      "validation": 11,
+      "test": 10
+    },
+    "DO": {
+      "train": 20,
+      "validation": 2,
+      "test": 2
+    },
     "FOOD": {
       "train": 10,
       "validation": 25,
@@ -70,10 +130,25 @@
       "validation": 2,
       "test": 14
     },
+    "HOW": {
+      "train": 32,
+      "validation": 2,
+      "test": 2
+    },
     "I_ME_MINE_MY": {
       "train": 143,
       "validation": 9,
       "test": 25
+    },
+    "NICE": {
+      "train": 26,
+      "validation": 2,
+      "test": 2
+    },
+    "THANK": {
+      "train": 10,
+      "validation": 2,
+      "test": 16
     },
     "WHAT": {
       "train": 41,
@@ -86,31 +161,59 @@
       "test": 25
     }
   },
-  "test_samples_evaluated": 39,
-  "test_accuracy": 0.5128205128205128,
+  "test_samples_evaluated": 55,
+  "test_accuracy": 0.36363636363636365,
   "rejection_threshold_by_profile": {
+    "COLLEGE_SCHOOL:1_hands": null,
+    "COLLEGE_SCHOOL:2_hands": null,
+    "DO:1_hands": 12.584873867034917,
+    "DO:2_hands": 18.20623016357422,
     "FOOD:1_hands": 7.902752923965454,
     "FOOD:2_hands": null,
     "HELP:2_hands": 16.22085189819336,
+    "HOW:1_hands": null,
+    "HOW:2_hands": null,
     "I_ME_MINE_MY:1_hands": 9.842043304443362,
     "I_ME_MINE_MY:2_hands": 25.923916244506838,
+    "NICE:1_hands": null,
+    "NICE:2_hands": 15.852309799194336,
+    "THANK:1_hands": 14.919332504272461,
+    "THANK:2_hands": null,
     "WHAT:1_hands": 13.646150016784672,
     "WHAT:2_hands": null,
     "YOU:1_hands": 10.22507381439209,
     "YOU:2_hands": 23.363004684448242
   },
   "rejection_threshold_source_by_profile": {
+    "COLLEGE_SCHOOL:1_hands": "unavailable",
+    "COLLEGE_SCHOOL:2_hands": "unavailable",
+    "DO:1_hands": "inferred_group_holdout_p90_experimental",
+    "DO:2_hands": "inferred_group_holdout_p90_experimental",
     "FOOD:1_hands": "inferred_group_holdout_p90_experimental",
     "FOOD:2_hands": "unavailable",
     "HELP:2_hands": "inferred_group_holdout_p90_experimental",
+    "HOW:1_hands": "unavailable",
+    "HOW:2_hands": "unavailable",
     "I_ME_MINE_MY:1_hands": "inferred_group_holdout_p90_experimental",
     "I_ME_MINE_MY:2_hands": "inferred_group_holdout_p90_experimental",
+    "NICE:1_hands": "unavailable",
+    "NICE:2_hands": "inferred_group_holdout_p90_experimental",
+    "THANK:1_hands": "inferred_group_holdout_p90_experimental",
+    "THANK:2_hands": "unavailable",
     "WHAT:1_hands": "inferred_group_holdout_p90_experimental",
     "WHAT:2_hands": "unavailable",
     "YOU:1_hands": "inferred_group_holdout_p90_experimental",
     "YOU:2_hands": "inferred_group_holdout_p90_experimental"
   },
   "required_hand_count_by_class": {
+    "COLLEGE_SCHOOL": [
+      1,
+      2
+    ],
+    "DO": [
+      1,
+      2
+    ],
     "FOOD": [
       1,
       2
@@ -118,7 +221,19 @@
     "HELP": [
       2
     ],
+    "HOW": [
+      1,
+      2
+    ],
     "I_ME_MINE_MY": [
+      1,
+      2
+    ],
+    "NICE": [
+      1,
+      2
+    ],
+    "THANK": [
       1,
       2
     ],
@@ -132,50 +247,145 @@
     ]
   },
   "required_face_anchor_by_class": {
+    "COLLEGE_SCHOOL": false,
+    "DO": false,
     "FOOD": true,
     "HELP": false,
+    "HOW": false,
     "I_ME_MINE_MY": false,
+    "NICE": false,
+    "THANK": false,
     "WHAT": false,
     "YOU": false
   },
   "confusion_matrix": {
+    "COLLEGE_SCHOOL": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 1,
+      "FOOD": 0,
+      "HELP": 0,
+      "HOW": 1,
+      "I_ME_MINE_MY": 0,
+      "NICE": 1,
+      "THANK": 2,
+      "WHAT": 0,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "DO": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
+      "FOOD": 0,
+      "HELP": 0,
+      "HOW": 1,
+      "I_ME_MINE_MY": 0,
+      "NICE": 0,
+      "THANK": 0,
+      "WHAT": 0,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
     "FOOD": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
       "FOOD": 2,
       "HELP": 0,
+      "HOW": 0,
       "I_ME_MINE_MY": 0,
+      "NICE": 0,
+      "THANK": 0,
       "WHAT": 0,
       "YOU": 0,
       "UNKNOWN": 0
     },
     "HELP": {
-      "FOOD": 2,
+      "COLLEGE_SCHOOL": 0,
+      "DO": 1,
+      "FOOD": 1,
       "HELP": 1,
-      "I_ME_MINE_MY": 1,
-      "WHAT": 3,
+      "HOW": 2,
+      "I_ME_MINE_MY": 0,
+      "NICE": 0,
+      "THANK": 0,
+      "WHAT": 2,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "HOW": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
+      "FOOD": 0,
+      "HELP": 1,
+      "HOW": 0,
+      "I_ME_MINE_MY": 0,
+      "NICE": 0,
+      "THANK": 0,
+      "WHAT": 0,
       "YOU": 0,
       "UNKNOWN": 0
     },
     "I_ME_MINE_MY": {
+      "COLLEGE_SCHOOL": 4,
+      "DO": 0,
       "FOOD": 0,
       "HELP": 1,
-      "I_ME_MINE_MY": 9,
-      "WHAT": 2,
-      "YOU": 1,
+      "HOW": 0,
+      "I_ME_MINE_MY": 8,
+      "NICE": 0,
+      "THANK": 0,
+      "WHAT": 0,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "NICE": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
+      "FOOD": 0,
+      "HELP": 0,
+      "HOW": 0,
+      "I_ME_MINE_MY": 0,
+      "NICE": 1,
+      "THANK": 0,
+      "WHAT": 0,
+      "YOU": 0,
+      "UNKNOWN": 0
+    },
+    "THANK": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
+      "FOOD": 3,
+      "HELP": 0,
+      "HOW": 2,
+      "I_ME_MINE_MY": 1,
+      "NICE": 1,
+      "THANK": 0,
+      "WHAT": 1,
+      "YOU": 0,
       "UNKNOWN": 0
     },
     "WHAT": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
       "FOOD": 1,
       "HELP": 0,
+      "HOW": 0,
       "I_ME_MINE_MY": 1,
+      "NICE": 0,
+      "THANK": 0,
       "WHAT": 2,
       "YOU": 0,
       "UNKNOWN": 0
     },
     "YOU": {
+      "COLLEGE_SCHOOL": 0,
+      "DO": 0,
       "FOOD": 1,
       "HELP": 1,
-      "I_ME_MINE_MY": 3,
-      "WHAT": 2,
+      "HOW": 1,
+      "I_ME_MINE_MY": 2,
+      "NICE": 1,
+      "THANK": 1,
+      "WHAT": 0,
       "YOU": 6,
       "UNKNOWN": 0
     }

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from web_dashboard import DashboardServer, DashboardState
+from web_dashboard import DATASET_ROOT, DashboardServer, DashboardState, dataset_image_records
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "test.py"
 SPEC = importlib.util.spec_from_file_location("mudra_phone_webcam_test", SCRIPT_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -22,6 +22,41 @@ SignActivityTracker = MODULE.SignActivityTracker
 
 
 class SignActivityTrackerTests(unittest.TestCase):
+    def test_dataset_image_index_lists_and_serves_every_image(self):
+        expected_images = dataset_image_records(DATASET_ROOT)
+        self.assertGreater(len(expected_images), 0)
+
+        dashboard = DashboardServer("127.0.0.1", 0, {})
+        dashboard.start()
+        try:
+            host, port = dashboard.address
+            base_url = f"http://{host}:{port}"
+            with urlopen(f"{base_url}/images") as response:
+                self.assertIn(b"Dataset images", response.read())
+
+            with urlopen(f"{base_url}/api/dataset/images") as response:
+                payload = json.loads(response.read())
+            self.assertEqual(payload["total"], len(expected_images))
+            self.assertEqual(len(payload["images"]), len(expected_images))
+            self.assertEqual(
+                payload["images"][0]["relative_path"],
+                expected_images[0][1].relative_to(DATASET_ROOT.resolve()).as_posix(),
+            )
+
+            with urlopen(f"{base_url}{payload['images'][0]['url']}") as response:
+                self.assertEqual(
+                    response.headers["Content-Type"],
+                    expected_images[0][2],
+                )
+                self.assertGreater(len(response.read()), 0)
+
+            with self.assertRaises(HTTPError) as error:
+                urlopen(f"{base_url}/api/dataset/image/{len(expected_images)}")
+            self.assertEqual(error.exception.code, 404)
+            error.exception.close()
+        finally:
+            dashboard.close()
+
     def test_rejects_brief_fidget(self):
         tracker = SignActivityTracker(start_hold_s=0.15, stop_hold_s=0.5)
 
@@ -133,6 +168,7 @@ class SignActivityTrackerTests(unittest.TestCase):
                 page = response.read()
                 self.assertIn(b"Boundary controls", page)
                 self.assertIn(b"STATIC-POSE MATCH", page)
+                self.assertIn(b"Browse all images", page)
 
             with urlopen(f"{base_url}/stream.mjpg", timeout=2) as response:
                 self.assertIn("multipart/x-mixed-replace", response.headers["Content-Type"])

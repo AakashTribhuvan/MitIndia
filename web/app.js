@@ -181,10 +181,15 @@ function readableLabel(label) {
   return label ? label.replace(/_/g, " ") : "Unknown"
 }
 
+function setLearningGuideVisible(visible) {
+  if (visible) learningGuide.removeAttribute("hidden")
+  else learningGuide.setAttribute("hidden", "")
+}
+
 function renderLearningGuide(guide) {
   learningGuideMarkers.replaceChildren()
   if (!guide || guide.label !== currentLearningLabel) {
-    learningGuide.hidden = true
+    setLearningGuideVisible(false)
     learningGuideBadge.hidden = true
     learningGuideCaption.textContent = currentLearningLabel
       ? `Expected ${currentLearningHandCount || "model"}-hand position will appear when body tracking is available.`
@@ -196,7 +201,7 @@ function renderLearningGuide(guide) {
   learningGuideBadge.textContent = `MODEL GUIDE · ${expectedCount} ${expectedCount === 1 ? "HAND" : "HANDS"}`
   learningGuideBadge.hidden = false
   if (guide.reason) {
-    learningGuide.hidden = true
+    setLearningGuideVisible(false)
     learningGuideCaption.textContent = `Cannot place the model guide: ${guide.reason}`
     return
   }
@@ -204,23 +209,40 @@ function renderLearningGuide(guide) {
   const height = Number(guide.frame_height)
   const positions = Array.isArray(guide.positions) ? guide.positions : []
   if (!(width > 0 && height > 0) || positions.length !== expectedCount) {
-    learningGuide.hidden = true
+    setLearningGuideVisible(false)
     learningGuideCaption.textContent = "Waiting for visible shoulders and a model-supported hand pose."
     return
   }
 
   learningGuide.setAttribute("viewBox", `0 0 ${width} ${height}`)
   const markerRadius = Math.max(28, Number(guide.marker_radius) || 0)
+  const edgeMargin = Math.min(markerRadius * 1.25, Math.min(width, height) / 3)
+  const offFrameDirections = []
   positions.forEach((position, index) => {
-    const x = Number(position.x)
-    const y = Number(position.y)
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    const projectedX = Number(position.x)
+    const projectedY = Number(position.y)
+    if (!Number.isFinite(projectedX) || !Number.isFinite(projectedY)) return
+    const directions = []
+    if (projectedY < 0) directions.push("UP")
+    if (projectedY > height) directions.push("DOWN")
+    if (projectedX < 0) directions.push("LEFT")
+    if (projectedX > width) directions.push("RIGHT")
+    if (directions.length) offFrameDirections.push(index + 1)
+    const x = Math.min(width - edgeMargin, Math.max(edgeMargin, projectedX))
+    const y = Math.min(height - edgeMargin, Math.max(edgeMargin, projectedY))
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle")
     marker.setAttribute("class", "learning-guide-marker")
     marker.setAttribute("cx", String(x))
     marker.setAttribute("cy", String(y))
     marker.setAttribute("r", String(markerRadius))
     learningGuideMarkers.append(marker)
+
+    const center = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+    center.setAttribute("class", "learning-guide-center")
+    center.setAttribute("cx", String(x))
+    center.setAttribute("cy", String(y))
+    center.setAttribute("r", String(Math.max(5, markerRadius * 0.08)))
+    learningGuideMarkers.append(center)
 
     for (const [x1, y1, x2, y2] of [
       [x - markerRadius * 0.45, y, x + markerRadius * 0.45, y],
@@ -237,15 +259,21 @@ function renderLearningGuide(guide) {
 
     const label = document.createElementNS("http://www.w3.org/2000/svg", "text")
     label.setAttribute("class", "learning-guide-label")
-    label.setAttribute("x", String(x + markerRadius * 0.55))
-    label.setAttribute("y", String(y - markerRadius * 0.55))
-    label.textContent = `HAND ${index + 1}`
+    label.setAttribute("x", String(x))
+    label.setAttribute("y", String(y - markerRadius * 0.65))
+    label.setAttribute("text-anchor", "middle")
+    label.textContent = directions.length
+      ? `WRIST ${index + 1} · OFF FRAME ${directions.join(" ")}`
+      : `EXPECTED WRIST ${index + 1}`
     learningGuideMarkers.append(label)
   })
-  learningGuide.hidden = false
+  setLearningGuideVisible(true)
   learningGuideCaption.textContent =
-    `Gold rings mark the expected wrist locations from the ${readableLabel(guide.label)} ` +
-    `${expectedCount}-hand model template. Match the hand positions and handshape; the guide is approximate.`
+    `Gold targets mark expected wrist positions for ${readableLabel(guide.label)}. ` +
+    `The live tracking skeleton remains visible; handshape guidance is approximate.` +
+    (offFrameDirections.length
+      ? ` Edge markers show ${offFrameDirections.length} expected wrist position(s) outside the frame.`
+      : "")
 }
 
 function displayMeaning(label) {

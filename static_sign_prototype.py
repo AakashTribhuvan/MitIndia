@@ -35,10 +35,21 @@ FEATURES_PATH = DERIVED_DIR / "selected_static_features.npz"
 MODEL_PATH = MODEL_DIR / "static_pose_medoids.npz"
 REPORT_PATH = MODEL_DIR / "static_pose_evaluation.json"
 CONFUSION_PATH = MODEL_DIR / "static_pose_confusion.csv"
-LABELS = ("I_ME_MINE_MY", "YOU", "FOOD", "HELP", "WHAT")
+LABELS = (
+    "I_ME_MINE_MY",
+    "YOU",
+    "FOOD",
+    "HELP",
+    "WHAT",
+    "HOW",
+    "COLLEGE_SCHOOL",
+    "NICE",
+    "THANK",
+    "DO",
+)
 REQUIRED_HAND_COUNTS = {"HELP": 2}
 REQUIRED_FACE_ANCHORS = {"FOOD"}
-FEATURE_SCHEMA = "mudra_static_pose_v9"
+FEATURE_SCHEMA = "mudra_static_pose_v10"
 HAND_FEATURE_DIM = 72
 FEATURE_DIM = 32 + 2 * HAND_FEATURE_DIM
 HAND_PRESENCE_OFFSET = 66
