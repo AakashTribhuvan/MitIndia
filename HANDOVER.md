@@ -6,9 +6,9 @@
 
 | Field | Value |
 |---|---|
-| Document version | 3 |
+| Document version | 4 |
 | Last updated | 2026-10-15 |
-| Last updated at commit | the commit tagged `v0.9.0` (see Section 21) |
+| Last updated at commit | the commit after `v0.9.0` that adds the v1.0 blueprint (see Section 21) |
 | Deployed model | `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`) |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
 | Tests | 66 passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) |
@@ -48,7 +48,8 @@
 
 ### For an AI model or engineer taking over
 
-1. Read Sections 1, 2 and 16 to know what works, what does not and what is next.
+1. Read Sections 1, 2 and 16 to know what works, what does not and what is next, and the current
+   blueprint (`docs/blueprints/`, now v1.0) for the target and the milestone being worked on.
 2. Read Sections 4-10 before touching runtime code, and 11-13 before touching training or claims.
 3. Never report a metric that is not in this document or produced by a script in this repo
    (Section 19). Numbers here are **held-out test** numbers unless labelled otherwise.
@@ -203,6 +204,7 @@ build a sentence and speak it.
 │   └── metadata/               manifests + split sets: NOT in the repository (kept locally, shared separately)
 └── docs/
     ├── AUDIT_2026-10-13.md     audit: what is real, what was faked or overstated, evidence, fixes
+    ├── blueprints/             versioned development plans (README index; v1.0 = definition of MUDRA v1.0, milestones M0-M6)
     ├── MUDRA_MASTER_PLAN.md    original analysis, dataset research, dated progress log (very detailed)
     ├── architecture.md         short architecture table
     └── planning/               the client's original review documents
@@ -858,6 +860,14 @@ that need the model or landmark data skip automatically when those files are mis
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-15 · blueprint v1.0 (docs only)
+- Added `docs/blueprints/MUDRA_DEVELOPMENT_BLUEPRINT_v1.0.md` (draft, pending review) and its index
+  `docs/blueprints/README.md`: what MUDRA v1.0 means (laptop webcam, a reviewed 20-50 word vocabulary,
+  accuracy measured live on signers outside the training data, proposed targets to be agreed),
+  milestones M0-M6 with acceptance criteria and evidence, safety / privacy / versioning rules.
+  v1.0 is built in this repository. Next milestone: M1 (laptop webcam), then M2 (live segmentation).
+- No code, model or behaviour change.
 
 ### 2026-10-15 · tag `v0.9.0` · audit, v8 deployment, live-webcam work (2026-10-12 to 10-15)
 - Checkpoint before the v1.0 plan (Section 16; blueprint to follow). Contents below.
