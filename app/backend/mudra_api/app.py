@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from mudra_api import __version__
 from mudra_api.recognizer import SignRecognizer, readable
-from mudra_api.recordings import RecordingStore, parse_frame
+from mudra_api.recordings import RecordingStore, frames_to_sequence, parse_frame
 from mudra_api.references import ReferenceClips
 from mudra_api.schemas import PredictRequest, PredictResponse
 from mudra_api.settings import Settings
@@ -124,6 +124,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except OSError:
             pass
 
+    session_dir = settings.session_dir
+    max_session_frames = 30 * 60 * 20  # 20 minutes at 30 fps
+
+    def save_session(frames: list, width: int, height: int, diag: dict) -> None:
+        """Opt-in (MUDRA_SESSION_DIR): one live session's landmarks, for offline replay."""
+        if session_dir is None or len(frames) < 30:
+            return
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            seq = frames_to_sequence(frames, width, height, {"source": "live_session", "client": diag,
+                                                              "segmenter": segmenter_cfg.to_dict(),
+                                                              "model": bundle.name if bundle else None})
+            seq.save(session_dir / f"session_{time.strftime('%Y%m%d-%H%M%S')}.npz")
+        except (OSError, ValueError):
+            pass
+
     @app.websocket("/stream")
     async def stream(ws: WebSocket) -> None:
         """Live recognition. Client sends {"type":"start","width","height"} then
@@ -135,15 +151,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await ws.close()
             return
         session: StreamingRecognizer | None = None
+        frames: list = []
+        size, diag = (0, 0), {}
         try:
             while True:
                 msg = await ws.receive_json()
                 if msg.get("type") == "start":
-                    session = StreamingRecognizer(bundle, segmenter_cfg, int(msg["width"]), int(msg["height"]), store.bank)
+                    save_session(frames, *size, diag)
+                    frames, size = [], (int(msg["width"]), int(msg["height"]))
+                    session = StreamingRecognizer(bundle, segmenter_cfg, *size, store.bank)
+                    continue
+                if msg.get("type") == "diag":  # client tracking diagnostics (fps, delegate), kept with a saved session
+                    diag = {k: msg[k] for k in ("camera_fps", "tracking_fps", "inference_ms", "delegate") if k in msg}
                     continue
                 if msg.get("type") != "frame" or session is None:
                     continue
-                event = session.push(parse_frame(msg))
+                frame = parse_frame(msg)
+                if session_dir is not None and len(frames) < max_session_frames:
+                    frames.append(frame)
+                event = session.push(frame)
                 if event and event["event"] in ("sign_ended", "too_short"):
                     log_sign(event)
                 if event:
@@ -156,6 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         event["result"]["label"] = readable(sign) if sign else None
                     await ws.send_json(event)
         except WebSocketDisconnect:
+            save_session(frames, *size, diag)
             return
 
     @app.get("/recordings")

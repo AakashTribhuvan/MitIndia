@@ -26,11 +26,14 @@ import { ISL_VOCABULARY_LEXICON, buildMultilingualSentence, findISLLexiconItem, 
 import { analyzeExpression, FACE_UNAVAILABLE_EXPRESSION, INITIAL_EXPRESSION } from '../services/expressionAnalyzer'
 import MudraAvatarViewer from '../components/avatar/MudraAvatarViewer'
 import SignReference from '../components/SignReference'
+import { useAccessibility } from '../context/AccessibilityContext'
 
 const AUTO_SPEAK_PAUSE_MS = 2500
 // An unsure sign still adds its best guess at this confidence or more (below it the sign is dropped)
 const AUTO_ADD_MIN = 0.5
 const LOW_FPS = 15
+// Signs islClassifier.js can detect (offline fallback)
+const RULE_SIGNS = ['HELLO', 'WATER', 'NAMASTE', 'THANK_YOU', 'YES', 'NO', 'PEACE', 'HELP']
 // Close-up framing: shoulders wider than this share of the frame, or lower than this height, leave no room for the hands
 const FRAMING = { maxShoulderWidth: 0.6, maxShoulderY: 0.72 }
 
@@ -71,6 +74,7 @@ export default function CommunicatePage() {
   // Framing check: the model was trained on signers seen from the waist up
   const [framing, setFraming] = useState(null) // null | 'no_shoulders' | 'too_close'
   const [trackerFps, setTrackerFps] = useState(0)
+  const [trackerDiag, setTrackerDiag] = useState(null) // {cameraFps, trackingFps, inferenceMs, delegate}
   const framingRef = useRef({ frames: 0, noShoulders: 0, tooClose: 0 })
   // Speak the sentence automatically after a pause in signing
   const [autoSpeak, setAutoSpeak] = useState(() => {
@@ -86,7 +90,12 @@ export default function CommunicatePage() {
   const [modelState, setModelState] = useState({ status: signRecognizer.status, info: null, error: null })
   // Words the camera model knows, so people can check a word before signing it
   const [vocab, setVocab] = useState([])
+  const { speechRate } = useAccessibility()
   const [vocabQuery, setVocabQuery] = useState('')
+  // Quick-add chips: online, the app words the model does not know; offline, the signs the rule engine detects
+  const chipSigns = modelState.status === 'online'
+    ? ISL_VOCABULARY_LEXICON.filter((v) => !vocab.length || !vocab.some((w) => w.sign === v.id))
+    : ISL_VOCABULARY_LEXICON.filter((v) => RULE_SIGNS.includes(v.id))
   const [vocabOpen, setVocabOpen] = useState(false)
   const [referenceSign, setReferenceSign] = useState(null) // word whose training example is shown
   useEffect(() => {
@@ -289,12 +298,23 @@ export default function CommunicatePage() {
   const recognitionRef = useRef(null)
 
   const fpsShownAtRef = useRef(0)
-  function setTrackerFpsThrottled(fps) {
+  function setTrackerFpsThrottled(fps, diag) {
     const now = performance.now()
     if (now - fpsShownAtRef.current < 1000) return
     fpsShownAtRef.current = now
     setTrackerFps(Math.round(fps))
+    if (diag) {
+      setTrackerDiag(diag)
+      // Tracking (not the camera) is the bottleneck: give the hands the GPU time the face tracker uses
+      faceExpressionTracker.setSlow(diag.cameraFps > 0 && diag.trackingFps < Math.min(diag.cameraFps - 3, LOW_FPS))
+    }
   }
+
+  // Why the frame rate is low: the camera itself (dim light) or the tracking (CPU / busy GPU)
+  const slowReason = !trackerDiag || trackerFps <= 0 || trackerFps >= LOW_FPS ? null
+    : trackerDiag.cameraFps > 0 && trackerDiag.cameraFps < LOW_FPS && trackerDiag.trackingFps >= trackerDiag.cameraFps - 3 ? 'camera'
+    : 'tracking'
+
 
   // Framing check over ~2 s windows: shoulders visible, and room below them for the hands
   function updateFraming(results) {
@@ -328,7 +348,7 @@ export default function CommunicatePage() {
 
     const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0
     updateFraming(results)
-    if (results.fps) setTrackerFpsThrottled(results.fps)
+    if (results.fps) setTrackerFpsThrottled(results.fps, results.diag)
     handTracker.drawPose(ctx, results.poseLandmarks, canvas.width, canvas.height, true)
     if (hasHands) {
       results.multiHandLandmarks.forEach((landmarks) => {
@@ -452,15 +472,14 @@ export default function CommunicatePage() {
         utterance.lang = 'en-IN'
       }
 
-      utterance.rate = 0.95
+      utterance.rate = 0.95 * speechRate
       utterance.pitch = 1.0
       setIsSpeaking(true)
       utterance.onend = () => setIsSpeaking(false)
       utterance.onerror = () => setIsSpeaking(false)
       window.speechSynthesis.speak(utterance)
     } else {
-      setIsSpeaking(true)
-      setTimeout(() => setIsSpeaking(false), 1200)
+      setIsSpeaking(false) // no speech synthesis in this browser: do not pretend to speak
     }
   }
 
@@ -667,7 +686,11 @@ export default function CommunicatePage() {
 
               {cameraActive && !framing && trackerFps > 0 && trackerFps < LOW_FPS && (
                 <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-md rounded-2xl bg-amber-400/95 px-4 py-2.5 text-center text-sm font-semibold text-amber-950 shadow-lg">
-                  Camera tracking is slow ({trackerFps} fps). Close other tabs or apps using the camera or GPU for smoother recognition.
+                  {slowReason === 'camera'
+                    ? `Your camera sends only ${trackerDiag.cameraFps} frames per second. Webcams slow down in dim light: add light in front of you.`
+                    : trackerDiag?.delegate === 'CPU'
+                    ? `Hand tracking runs on the CPU (${trackerFps} fps). Turn on hardware acceleration in the browser settings, or close other tabs.`
+                    : `Hand tracking is slow (${trackerFps} fps, ${trackerDiag?.inferenceMs ?? '?'} ms per frame). Close other tabs or apps using the GPU.`}
                 </div>
               )}
 
@@ -690,7 +713,7 @@ export default function CommunicatePage() {
                   <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-xs font-mono text-mudra-peach-300">
                     <span>
                       {currentDetection.source === 'model'
-                        ? `Model · ${trackerFps} fps`
+                        ? `Model · ${trackerFps} fps${trackerDiag?.delegate ? ` · ${trackerDiag.delegate}` : ''}`
                         : currentDetection.source === 'manual'
                         ? 'Manual entry'
                         : `Rules · ${currentDetection.confidence ?? 0}%`}
@@ -738,15 +761,15 @@ export default function CommunicatePage() {
             <div className="glass-card rounded-3xl p-4 border border-white space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-mudra-indigo-900 font-display">
-                  {modelState.status === 'online' ? 'Add a word manually:' : 'Verified Signs (Hold in camera or click to add):'}
+                  {modelState.status === 'online' ? 'Add a word manually:' : 'Rule-based signs (hold in camera or click to add):'}
                 </span>
                 {modelState.status === 'online' && (
                   <span className="text-[10px] text-mudra-indigo-500">Not recognised from the camera yet: teach them on the Record page</span>
                 )}
-                <span className="text-[10px] text-mudra-indigo-500 font-mono">8 Signs</span>
+                <span className="text-[10px] text-mudra-indigo-500 font-mono">{chipSigns.length} Signs</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {ISL_VOCABULARY_LEXICON.slice(0, 8).map((v) => (
+                {chipSigns.map((v) => (
                   <button
                     key={v.id}
                     type="button"
@@ -809,7 +832,7 @@ export default function CommunicatePage() {
                     )}
                     <p className="text-[11px] text-mudra-indigo-600">
                       Tap a word to see how the model expects it to be signed. Sign one word from start to finish, then
-                      lower your hands. Stand so your shoulders and both hands are in view.
+                      lower your hands or hold them still for a moment. Stand so your shoulders and both hands are in view.
                     </p>
                   </>
                 )}
@@ -866,7 +889,7 @@ export default function CommunicatePage() {
                 </div>
                 {currentDetection.status === 'signing' && currentDetection.candidate && (
                   <p className="text-xs text-mudra-indigo-600 mt-1">
-                    Looks like <strong>{currentDetection.candidate}</strong>… (finish the sign and lower your hands)
+                    Looks like <strong>{currentDetection.candidate}</strong>… (finish the sign, then hold your hands still)
                   </p>
                 )}
                 {!currentDetection.isUnknown && currentDetection.sign && currentDetection.sign !== 'UNKNOWN' && (
@@ -899,7 +922,7 @@ export default function CommunicatePage() {
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${modelState.status === 'online' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                     {modelState.status === 'online'
-                      ? `Trained model · ${modelState.info?.num_signs ?? ''} INCLUDE words`
+                      ? `Trained model · ${modelState.info?.num_signs ?? ''} words`
                       : modelState.status === 'checking'
                       ? 'Connecting to recognition model...'
                       : 'Offline: rule-based fallback, 8 signs'}
@@ -945,7 +968,7 @@ export default function CommunicatePage() {
                   ) : (
                     <span className="text-xs text-mudra-indigo-400 italic">
                       {modelState.status === 'online'
-                        ? 'Sign a word from start to finish, then lower your hands; it is added when the sign ends'
+                        ? 'Sign a word, then lower your hands or hold them still for a moment; it is added when the sign ends'
                         : 'Hold a sign steady in camera to commit token'}
                     </span>
                   )}
@@ -1146,7 +1169,7 @@ export default function CommunicatePage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-1 text-[11px] text-mudra-indigo-500">
                     <Sparkles className="w-3 h-3 text-mudra-lavender-600" />
-                    <span>Supports 10 Core Words & 26 Alphabet Fingerspellings</span>
+                    <span>Avatar: 13 words and A-Z fingerspelling</span>
                   </div>
 
                   <button

@@ -6,6 +6,10 @@ when raised, and the shoulders may touch the frame edge. ``closeup_view`` re-fra
 way (a virtual camera crop around the head and shoulders) and drops what such a camera would
 not see: a hand mostly outside the frame is not detected, and pose points outside it get low
 visibility, as MediaPipe reports them.
+
+``desk_view`` adds what the developer's live log showed (2026-10-07/12): at a desk the hands do not
+drop out of a close frame between signs, they rest in view (hand visible in 90-100% of every
+segment). ``low_fps_view`` is a camera delivering few frames per second (6-8 fps live).
 """
 
 from __future__ import annotations
@@ -76,3 +80,82 @@ def closeup_view(seq: LandmarkSequence, params: CloseupParams) -> LandmarkSequen
     meta = {**seq.meta, "width": WEBCAM[0], "height": WEBCAM[1]}
     return LandmarkSequence(hands.astype(np.float32), present, present.astype(np.float32), pose.astype(np.float32),
                             seq.pose_present.copy(), seq.timestamps_ms, meta)
+
+
+def clip_fps(seq: LandmarkSequence) -> float:
+    return float(seq.meta.get("fps") or 0) or 25.0
+
+
+@dataclass
+class DeskParams:
+    depth: float  # resting wrists, shoulder widths below the shoulder line
+    inward: float  # share of the way from each shoulder towards the body middle
+
+    @classmethod
+    def sample(cls, rng: np.random.Generator) -> DeskParams:
+        return cls(rng.uniform(0.3, 0.9), rng.uniform(0.1, 0.5))
+
+
+def desk_view(seq: LandmarkSequence, params: DeskParams, rng: np.random.Generator,
+              rest_shapes: dict[int, np.ndarray] | None = None) -> LandmarkSequence:
+    """The clip signed at a desk: before its first and after its last detection each hand rests in view.
+
+    A resting hand sits at ``params`` (still, apart from tracking jitter) and moves to / from the
+    signing position over at most 0.4 s. A hand the sign does not use rests for the whole clip, with
+    its shape from ``rest_shapes`` (if given; it is updated with the shapes seen here). Hands whose
+    rest position falls outside the frame are left as they are (they drop out of view).
+    """
+    w, h = int(seq.meta.get("width", 0)) or 1, int(seq.meta.get("height", 0)) or 1
+    seen_pose = np.flatnonzero(seq.pose_present)
+    if not len(seen_pose):
+        return seq
+    rest_shapes = {} if rest_shapes is None else rest_shapes
+    hands, present, pose = seq.hands.copy(), seq.hand_present.copy(), seq.pose.copy()
+    n, ramp = len(hands), max(1, int(0.4 * clip_fps(seq)))
+    ref = pose[seen_pose[0]]
+    sh = {0: ref[schema.POSE_LEFT_SHOULDER, :2], 1: ref[schema.POSE_RIGHT_SHOULDER, :2]}
+    sw = float(np.linalg.norm((sh[0] - sh[1]) * [w, h]))
+    for hand, wrist_idx in ((0, schema.POSE_LEFT_WRIST), (1, schema.POSE_RIGHT_WRIST)):
+        target = sh[hand] + ((sh[0] + sh[1]) / 2 - sh[hand]) * params.inward + [0, params.depth * sw / h]
+        seen = np.flatnonzero(present[:, hand])
+        if len(seen):
+            first = seq.hands[seen[0], hand] - seq.hands[seen[0], hand, schema.WRIST]
+            last = seq.hands[seen[-1], hand] - seq.hands[seen[-1], hand, schema.WRIST]
+            rest_shapes[hand] = last
+        elif hand in rest_shapes:
+            first = last = rest_shapes[hand]
+        else:
+            continue
+        if not (0.02 <= target[0] <= 0.98 and 0.02 <= target[1] <= 0.98):
+            continue
+        spans = [(0, int(seen[0]), first), (int(seen[-1]) + 1, n, last)] if len(seen) else [(0, n, first)]
+        for a, b, shape in spans:
+            rest = shape + np.array([*target, 0], np.float32)
+            for i in range(a, b):
+                frame = rest + np.array([*rng.normal(0, 0.003, 2), 0], np.float32)
+                if len(seen) and a == 0 and b - i <= ramp:  # moving up to the first signing position
+                    k = (ramp - (b - i) + 1) / (ramp + 1)
+                    frame = (1 - k) * frame + k * seq.hands[seen[0], hand]
+                elif len(seen) and a > 0 and i - a < ramp:  # moving down from the last one
+                    k = (i - a + 1) / (ramp + 1)
+                    frame = (1 - k) * seq.hands[seen[-1], hand] + k * frame
+                hands[i, hand] = frame
+                present[i, hand] = True
+                pose[i, wrist_idx, :2] = frame[schema.WRIST, :2]
+                pose[i, wrist_idx, 3] = max(pose[i, wrist_idx, 3], 0.8)
+    return LandmarkSequence(hands.astype(np.float32), present, present.astype(np.float32), pose.astype(np.float32),
+                            seq.pose_present.copy(), seq.timestamps_ms, seq.meta)
+
+
+def low_fps_view(seq: LandmarkSequence, fps: float) -> LandmarkSequence:
+    """The clip as a camera delivering at most ``fps`` frames per second would record it."""
+    src = clip_fps(seq)
+    if fps >= src:
+        return seq
+    idx = np.unique(np.round(np.arange(0, seq.num_frames, src / fps)).astype(int))
+    idx = idx[idx < seq.num_frames]
+    if len(idx) < 4:
+        return seq
+    meta = {**seq.meta, "fps": src * len(idx) / seq.num_frames}
+    return LandmarkSequence(seq.hands[idx], seq.hand_present[idx], seq.hand_score[idx], seq.pose[idx],
+                            seq.pose_present[idx], seq.timestamps_ms[idx], meta)

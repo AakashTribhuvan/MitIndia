@@ -9,6 +9,7 @@
  *   multiHandedness     Array<{label, score}>   MediaPipe labels (assume a mirrored image)
  *   poseLandmarks       Array<{x,y,z,visibility}> | null   33 body points
  *   width, height       video size in pixels
+ *   diag                {cameraFps, trackingFps, inferenceMs, delegate}: what limits the frame rate
  */
 
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision'
@@ -40,12 +41,16 @@ export const POSE_CONNECTIONS = [
 
 async function createWithFallback(factory, vision, options) {
   try {
-    return await factory.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: 'GPU' } })
+    const landmarker = await factory.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: 'GPU' } })
+    return { landmarker, delegate: 'GPU' }
   } catch (gpuError) {
     console.warn('GPU delegate unavailable, falling back to CPU:', gpuError)
-    return factory.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: 'CPU' } })
+    const landmarker = await factory.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: 'CPU' } })
+    return { landmarker, delegate: 'CPU' }
   }
 }
+
+const ema = (prev, value, k = 0.1) => (prev ? (1 - k) * prev + k * value : value)
 
 class HandTrackerService {
   constructor() {
@@ -59,6 +64,9 @@ class HandTrackerService {
     this.initializationPromise = null
     this.lastVideoTime = -1
     this.lastTimestamp = 0
+    this.delegate = null // 'GPU' or 'CPU' (CPU if either landmarker fell back)
+    this.cameraFps = 0 // frames the camera delivers
+    this.inferenceMs = 0 // hand + pose time per processed frame
   }
 
   /**
@@ -70,7 +78,7 @@ class HandTrackerService {
 
     this.initializationPromise = (async () => {
       const vision = await FilesetResolver.forVisionTasks(WASM_PATH)
-      this.handLandmarker = await createWithFallback(HandLandmarker, vision, {
+      const hands = await createWithFallback(HandLandmarker, vision, {
         baseOptions: { modelAssetPath: HAND_MODEL },
         runningMode: 'VIDEO',
         numHands: 2,
@@ -78,12 +86,15 @@ class HandTrackerService {
         minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5
       })
-      this.poseLandmarker = await createWithFallback(PoseLandmarker, vision, {
+      const pose = await createWithFallback(PoseLandmarker, vision, {
         baseOptions: { modelAssetPath: POSE_MODEL },
         runningMode: 'VIDEO',
         numPoses: 1,
         minPoseDetectionConfidence: 0.5
       })
+      this.handLandmarker = hands.landmarker
+      this.poseLandmarker = pose.landmarker
+      this.delegate = hands.delegate === 'GPU' && pose.delegate === 'GPU' ? 'GPU' : 'CPU'
       return this
     })().catch((error) => {
       this.initializationPromise = null
@@ -115,8 +126,29 @@ class HandTrackerService {
 
     this.isTracking = true
     this.lastVideoTime = -1
+    this._countCameraFrames()
     this._processVideoLoop()
     return true
+  }
+
+  /**
+   * Counts the frames the camera delivers, independent of how many are tracked: a webcam in a dim
+   * room lowers its own frame rate, which no amount of GPU fixes.
+   */
+  _countCameraFrames() {
+    const video = this.videoElement
+    if (!video?.requestVideoFrameCallback) {
+      this.cameraFps = this.stream?.getVideoTracks?.()[0]?.getSettings?.().frameRate || 0
+      return
+    }
+    let last = 0
+    const onFrame = (now) => {
+      if (!this.isTracking || this.videoElement !== video) return
+      if (last) this.cameraFps = ema(this.cameraFps, 1000 / Math.max(now - last, 1))
+      last = now
+      video.requestVideoFrameCallback(onFrame)
+    }
+    video.requestVideoFrameCallback(onFrame)
   }
 
   /**
@@ -132,6 +164,7 @@ class HandTrackerService {
       const timestamp = Math.max(Math.round(performance.now()), this.lastTimestamp + 1)
       this.lastTimestamp = timestamp
       try {
+        const started = performance.now()
         const hands = this.handLandmarker.detectForVideo(video, timestamp)
         // The body moves slowly: pose every other frame halves its cost and keeps hands at full rate
         this.frameCount = (this.frameCount || 0) + 1
@@ -139,9 +172,10 @@ class HandTrackerService {
           this.lastPose = this.poseLandmarker.detectForVideo(video, timestamp)
         }
         const pose = this.lastPose
+        this.inferenceMs = ema(this.inferenceMs, performance.now() - started)
         const dt = this.lastFrameAt ? (timestamp - this.lastFrameAt) / 1000 : 0
         this.lastFrameAt = timestamp
-        if (dt > 0) this.fps = this.fps ? 0.9 * this.fps + 0.1 / dt : 1 / dt
+        if (dt > 0) this.fps = ema(this.fps, 1 / dt)
         this.onResultsCallback?.({
           multiHandLandmarks: hands.landmarks || [],
           multiHandedness: (hands.handedness || hands.handednesses || []).map((categories) => ({
@@ -152,7 +186,13 @@ class HandTrackerService {
           width: video.videoWidth,
           height: video.videoHeight,
           timestamp,
-          fps: this.fps || 0
+          fps: this.fps || 0,
+          diag: {
+            cameraFps: Math.round(this.cameraFps || 0),
+            trackingFps: Math.round(this.fps || 0),
+            inferenceMs: Math.round(this.inferenceMs || 0),
+            delegate: this.delegate
+          }
         })
       } catch (err) {
         console.warn('Frame processing exception:', err)
@@ -170,6 +210,8 @@ class HandTrackerService {
     this.lastPose = null
     this.lastFrameAt = 0
     this.fps = 0
+    this.cameraFps = 0
+    this.inferenceMs = 0
 
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId)

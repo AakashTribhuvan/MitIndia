@@ -351,7 +351,7 @@ export default function LearnPage({ onNavigate, onSelectPracticeSign }) {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="font-display font-bold text-2xl text-mudra-indigo-950">
-              Official ISLRTC Verified Lexicon
+              Avatar Sign Lexicon
             </h2>
             <p className="text-xs text-mudra-indigo-600">
               Click any sign below to instantly load its 3D demonstration in the studio.
@@ -422,7 +422,7 @@ export default function LearnPage({ onNavigate, onSelectPracticeSign }) {
                     </span>
                     <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3" />
-                      <span>Verified</span>
+                      <span>Avatar</span>
                     </span>
                   </div>
 

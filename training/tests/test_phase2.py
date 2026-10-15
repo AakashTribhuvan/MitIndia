@@ -254,3 +254,58 @@ def test_fill_hand_gaps_bridges_short_gaps_only():
     assert out.hand_present[:5, 0].all() and abs(float(out.hands[2, 0, 0, 0]) - 2.0) < 1e-5
     assert not out.hand_present[5:15, 0].any()  # longer than 0.2 s: left alone
     assert not out.hand_present[:, 1].any()
+
+
+def test_desk_view_keeps_hands_in_view_and_low_fps_view_drops_frames():
+    from mudra_ml.datasets.camera import DeskParams, desk_view, low_fps_view
+
+    n = 60
+    pose = np.zeros((n, 33, 4), np.float32); pose[..., 3] = 1
+    pose[:, 11, :2], pose[:, 12, :2] = [0.6, 0.4], [0.4, 0.4]
+    hands = np.zeros((n, 2, 21, 3), np.float32)
+    present = np.zeros((n, 2), bool)
+    present[25:35, 1] = True  # the right hand signs in the middle only; the left hand is never used
+    hands[25:35, 1, :, :2] = [0.45, 0.3]
+    hands[25:35, 1, 8, :2] += 0.05  # a fingertip: a non-trivial shape
+    seq = LandmarkSequence(hands, present, present.astype(np.float32), pose, np.ones(n, bool),
+                           np.arange(n) * 40, {"width": 640, "height": 480, "fps": 25.0})
+    shapes = {0: np.zeros((21, 3), np.float32)}
+    view = desk_view(seq, DeskParams(depth=0.5, inward=0.3), np.random.default_rng(0), shapes)
+    assert view.hand_present.all()  # both hands visible all the time
+    rest_y = 0.4 + 0.5 * 0.2 * 640 / 480  # shoulder line + 0.5 shoulder widths (in image height units)
+    assert abs(float(view.hands[0, 1, 0, 1]) - rest_y) < 0.02 and abs(float(view.hands[-1, 1, 0, 1]) - rest_y) < 0.02
+    assert np.allclose(view.hands[25:35, 1], seq.hands[25:35, 1])  # the sign itself is untouched
+    assert abs(float(view.hands[0, 1, 8, 0] - view.hands[0, 1, 0, 0]) - 0.05) < 1e-5  # rest keeps the hand shape
+    slow = low_fps_view(seq, 8.0)
+    assert 18 <= slow.num_frames <= 21 and abs(slow.meta["fps"] - 25.0 * slow.num_frames / n) < 1e-6
+
+
+def test_desk_and_low_fps_augmentation_runs(split_dir):
+    classes = json.loads((split_dir / "classes.json").read_text())
+    cfg = FeatureConfig(seq_len=8)
+    aug = AugmentConfig(closeup_prob=1.0, desk_share=1.0, low_fps_prob=1.0, segment_crop_prob=1.0)
+    ds = ISLLandmarkDataset(split_dir / "train.csv", classes, cfg, aug, seed=0)
+    assert all(ds[i][0].shape == (8, cfg.feature_dim) for i in range(len(ds)))
+
+
+def test_per_word_test_counts_recordings_once(tmp_path):
+    """The INCLUDE video and pose-release copies of one recording share a group: one recording, correct
+    only if every copy is (audit 2026-10-13: pooled numbers had counted 498 recordings twice)."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from export_model import per_word_test_accuracy
+
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "test_predictions.csv").write_text(
+        "sample_id,true,predicted,confidence,correct\n"
+        "a_pose,SAD,SAD,0.9,1\na_video,SAD,SAD,0.9,1\n"  # one recording, both copies right
+        "b_pose,SAD,SAD,0.9,1\nb_video,SAD,HAPPY,0.6,0\n"  # one recording, one copy wrong
+        "c,SAD,SAD,0.9,1\n", encoding="utf-8")  # a recording with a single copy
+    split = tmp_path / "split"
+    split.mkdir()
+    (split / "test.csv").write_text(
+        "sample_id,group_id\na_pose,g1\na_video,g1\nb_pose,g2\nb_video,g2\nc,g3\n", encoding="utf-8")
+    assert per_word_test_accuracy(tmp_path, split) == {"SAD": {"correct": 2, "clips": 3}}
+    assert per_word_test_accuracy(tmp_path) == {"SAD": {"correct": 4, "clips": 5}}  # no split: rows

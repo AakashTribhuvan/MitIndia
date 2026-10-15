@@ -35,7 +35,7 @@ export default function Navbar({ activeTab, onNavigate }) {
     { id: 'home', label: 'Home', icon: Sparkles },
     { id: 'communicate', label: 'Communicate', icon: Camera, badge: 'Live AI' },
     { id: 'learn', label: 'Learn', icon: BookOpen },
-    { id: 'practice', label: 'Practice', icon: Hand, badge: 'AI Coach' },
+    { id: 'practice', label: 'Practice', icon: Hand, badge: 'Coach' },
     { id: 'progress', label: 'Progress', icon: Award },
     { id: 'record', label: 'Record', icon: Video },
   ]

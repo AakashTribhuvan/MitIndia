@@ -25,15 +25,14 @@ export default function DeviceShowcase({ onNavigate }) {
       contextLabel: 'Classroom & Online Meetings',
       contextIcon: GraduationCap,
       headline: 'Full-screen interpretation in classrooms and remote calls.',
-      description: 'Join Zoom lectures, telemedicine sessions, or workplace webinars. MUDRA interprets real-time ISL signs directly on your screen through your built-in webcam with zero plugins or downloads.',
+      description: 'Join Zoom lectures, telemedicine sessions, or workplace webinars. MUDRA runs in the browser with your built-in webcam; recognition needs the MUDRA server (no meeting-app integration yet).',
       useCases: ['University & School Classrooms', 'Telehealth & Doctor Consultations', 'Remote Workplace Meetings'],
       frameStyle: 'aspect-[16/10] max-w-xl',
       cameraBadge: 'Built-in Web Camera • 720p/1080p',
       screenPreview: {
         title: 'Online Biology Lecture • Signer Interpreting',
-        signToken: 'WATER',
-        sentence: 'Water is essential for cellular hydration.',
-        confidence: 96,
+        signToken: 'HELLO',
+        sentence: 'Hello.',
         userRole: 'Student in Lecture'
       }
     },
@@ -50,9 +49,8 @@ export default function DeviceShowcase({ onNavigate }) {
       cameraBadge: 'Front-Facing Tablet Camera',
       screenPreview: {
         title: 'MUDRA Practice Studio • Hand Tracking',
-        signToken: 'NAMASTE',
-        sentence: 'Namaste, welcome to the learning session.',
-        confidence: 98,
+        signToken: 'THANK YOU',
+        sentence: 'Thank you.',
         userRole: 'Independent Learner'
       }
     },
@@ -69,9 +67,8 @@ export default function DeviceShowcase({ onNavigate }) {
       cameraBadge: 'Mobile Phone Camera • Ultra-Portable',
       screenPreview: {
         title: 'MUDRA Pocket Communicator • Live Voice',
-        signToken: 'HELP',
-        sentence: 'Please help me with platform directions.',
-        confidence: 94,
+        signToken: 'GOOD MORNING',
+        sentence: 'Good morning.',
         userRole: 'Citizen on the Move'
       }
     }
@@ -157,8 +154,8 @@ export default function DeviceShowcase({ onNavigate }) {
                     {/* Screen Header */}
                     <div className="flex items-center justify-between text-[10px] text-mudra-indigo-300 z-10">
                       <span className="font-mono font-bold text-mudra-peach-300">{current.screenPreview.title}</span>
-                      <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono font-bold">
-                        {current.screenPreview.confidence}% Confidence
+                      <span className="bg-white/10 text-mudra-indigo-200 px-2 py-0.5 rounded-full font-mono font-bold">
+                        Illustration
                       </span>
                     </div>
 
@@ -173,7 +170,7 @@ export default function DeviceShowcase({ onNavigate }) {
                           👋
                         </div>
                         <span className="text-[11px] font-mono font-bold text-mudra-lavender-200">
-                          Detected Sign: {current.screenPreview.signToken}
+                          Example sign: {current.screenPreview.signToken}
                         </span>
                       </div>
                     </div>
@@ -182,7 +179,7 @@ export default function DeviceShowcase({ onNavigate }) {
                     <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-between gap-2 z-10">
                       <div className="min-w-0">
                         <div className="text-[9px] uppercase font-mono text-mudra-peach-300 font-bold">
-                          Live Voice Output:
+                          Spoken output (example):
                         </div>
                         <div className="text-xs font-semibold text-white truncate">
                           "{current.screenPreview.sentence}"

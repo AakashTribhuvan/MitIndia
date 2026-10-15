@@ -98,7 +98,16 @@ class SignRecognizer {
     if (this.status !== 'online') return
     if (!this.ws) this._open(results.width || 640, results.height || 480)
     if (!this.started || this.ws.readyState !== WebSocket.OPEN) return
-    this.ws.send(JSON.stringify(toFrame(results, performance.now() / 1000)))
+    const now = performance.now()
+    if (results.diag && now - (this.diagSentAt || 0) > 3000) {
+      // Tracking diagnostics, kept with a saved session (MUDRA_SESSION_DIR) to explain low frame rates
+      this.diagSentAt = now
+      const d = results.diag
+      this.ws.send(JSON.stringify({
+        type: 'diag', camera_fps: d.cameraFps, tracking_fps: d.trackingFps, inference_ms: d.inferenceMs, delegate: d.delegate
+      }))
+    }
+    this.ws.send(JSON.stringify(toFrame(results, now / 1000)))
   }
 
   /** Ends the live session (camera stopped). */

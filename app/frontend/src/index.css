@@ -212,3 +212,7 @@
   color: #FFFFFF !important;
   border: 2px solid #000000 !important;
 }
+
+/* Accessibility text size (AccessibilityContext): Tailwind sizes are in rem, so scaling the root scales the app */
+html.text-size-large { font-size: 112.5%; }
+html.text-size-xlarge { font-size: 125%; }

@@ -278,7 +278,7 @@ export function evaluateSignAttempt(targetSignId, primaryLandmarks, allHands = [
 
   if (overallSimilarity >= 80) {
     status = 'HIGH_MATCH'
-    feedbackMessage = `Excellent ${lexiconItem.label} execution! Your hand shape and orientation match the ISLRTC standard.`
+    feedbackMessage = `Excellent ${lexiconItem.label} execution! Your hand shape and orientation match the coach's rules for this sign.`
   } else if (overallSimilarity >= 50) {
     status = 'NEEDS_ADJUSTMENT'
     feedbackMessage = specificAdvice.length > 0

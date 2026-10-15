@@ -409,3 +409,20 @@ Phase 3 candidate: BiLSTM without velocity (best mean, best calibration); MLP+po
   v6 92.4% / 1.6%, v7 91.7% / 1.6%. Deployed v6 (`isl_mudra_combined_v6_bilstm`, threshold 0.7, tta 1).
 - New: `/reference/{sign}` + "How to sign it" viewer (one real training example per word as a skeleton,
   mirrored); per-word test accuracy in the model card and the word list.
+
+### 2026-10-13: Audit of claims and evaluation (corrections to entries above)
+- Full report: `docs/AUDIT_2026-10-13.md`. Numbers above reproduce exactly (v6 test re-run: 98.19%;
+  97.43 / 99.00 / 99.45% per source), but several entries need a caveat or a correction:
+- Test clips share signers and sessions with training: 735/816 INCLUDE test clips have a same-word train
+  clip 1-2 file numbers away; 181/181 team-word test clips a same-word take within 2 minutes. All
+  "held-out test" clip and stream numbers above are new takes by known signers.
+- 2026-10-06 entry "Team words on a held-out day 96.7%" is wrong: in `combined_words_v2_session` all 181
+  team test clips share word and day with training takes. The genuine held-out-day result is the
+  2026-10-05 one (98.0%, 99 clips of 20 words, split checked: no word+day overlap).
+- The 66.7% / 60.1% / 64.5% / 62.8% unseen-session figures are the INCLUDE-video subset; pose copies:
+  66.8% / 58.3% / 63.6% / 63.6%.
+- Pooled test accuracy counts 498 recordings twice (video + pose copies); per recording 97.6% (973/997).
+- Few-shot queries were recorded within 2 minutes of the support examples (same-session numbers).
+- v5 and the first stillness rule were rejected on test numbers; the test split is no longer untouched.
+- Home-page confidences, metrics and testimonials were invented (now removed); the Practice coach is
+  rule-based, not AI; the speech-speed and text-size settings did nothing (now fixed).

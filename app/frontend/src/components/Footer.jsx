@@ -97,7 +97,7 @@ export default function Footer({ onNavigate }) {
               Accessibility & Ethics
             </div>
             <p className="text-xs text-mudra-indigo-600 leading-relaxed">
-              MUDRA is built in accordance with WCAG 2.1 AAA contrast benchmarks, keyboard-first navigation, zero biometric recording, and assistive TTS integration.
+              Camera video never leaves your device. For recognition, hand and body landmark coordinates are sent to the MUDRA server; signs you record on the Record page are stored there. Not yet audited against WCAG.
             </p>
             <div className="pt-1">
               <button

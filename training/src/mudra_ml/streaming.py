@@ -37,6 +37,14 @@ class SegmenterConfig:
     tta: int = 1  # smoothing: classify this many slightly different cuts of the sign and average them
     cooldown_s: float = 1.0  # the same word is not added again within this time (double triggers)
     provisional_s: float = 0.5  # while signing, send a live guess this often (UI only, never committed)
+    # Parked hands: at a desk in front of a close webcam the hands rest *in view*, where they always
+    # count as raised. Hands that stay still this long count as resting wherever they are; the rest
+    # starts when the stillness began, and only movement starts the next sign. 0 = off.
+    still_s: float = 0.0
+    still_speed: float = 0.5  # mean speed of the hand's 21 points (shoulder widths / s) below which it is still
+    still_window_s: float = 0.25  # speed for stillness is measured over this span, so tracking jitter does not grow with fps
+    still_below_y: float = -10.0  # parking only applies to hands lower than this (shoulder widths below the shoulder line)
+    still_keep_s: float = 0.0  # a sign ended by stillness keeps this much of the still part (a held final handshape)
 
     @classmethod
     def load(cls, path: Path | None) -> SegmenterConfig:
@@ -57,6 +65,9 @@ class Frame:
     pose_present: bool
 
 
+MOVE_SPAN_S = 0.1  # wrist speed for "moving" is measured over at least this span
+
+
 class SignSegmenter:
     """Hysteresis state machine over a per-frame activity signal (hands raised or moving)."""
 
@@ -69,8 +80,9 @@ class SignSegmenter:
         self.rest_since: float | None = None
         self.sign_start: float | None = None
         self.body: tuple[np.ndarray, float] | None = None  # shoulder centre, shoulder width
-        self.prev_wrist: list[np.ndarray | None] = [None, None]
-        self.prev_t: float | None = None
+        self.point_hist: list[deque] = [deque(), deque()]  # (t, points) per hand over the last still_window_s
+        self.still_since: float | None = None  # all visible hands still (and low enough) since then
+        self.parked = False
 
     def _activity(self, f: Frame) -> bool:
         if f.pose_present:
@@ -80,24 +92,42 @@ class SignSegmenter:
                 w = float(np.linalg.norm((ls[:2] - rs[:2]) * [self.aspect, 1]))
                 if w > 1e-4:
                     self.body = (c, w)
-        dt = (f.t - self.prev_t) if self.prev_t is not None else 0.0
-        active = False
+        raised = moving = False
+        still = any(f.present)  # every visible hand still (unknown speed does not break it)
         for h in range(2):
             if not f.present[h]:
-                self.prev_wrist[h] = None
+                self.point_hist[h].clear()
                 continue
-            wrist = f.hands[h, schema.WRIST, :2] * [self.aspect, 1]
+            points = f.hands[h, :, :2] * [self.aspect, 1]
+            wrist = points[schema.WRIST]
             if self.body is None:
-                active = True  # no body reference: a visible hand is the only evidence
+                raised = True  # no body reference: a visible hand is the only evidence
             else:
                 c, w = self.body
-                raised = (wrist[1] - c[1]) / w < self.cfg.raise_y
-                prev = self.prev_wrist[h]
-                moving = prev is not None and dt > 0 and np.linalg.norm(wrist - prev) / w / dt > self.cfg.speed
-                active = active or raised or moving
-            self.prev_wrist[h] = wrist
-        self.prev_t = f.t
-        return active
+                height = (wrist[1] - c[1]) / w
+                raised = raised or height < self.cfg.raise_y
+                hist = self.point_hist[h]
+                # wrist speed over >= 0.1 s (the previous frame at low fps): at 30 fps frame-to-frame
+                # tracking jitter alone would read as movement
+                ref = next(((t0, p0) for t0, p0 in reversed(hist) if f.t - t0 >= MOVE_SPAN_S), hist[0] if hist else None)
+                if ref is not None and f.t > ref[0]:
+                    moving = moving or np.linalg.norm(wrist - ref[1][schema.WRIST]) / w / (f.t - ref[0]) > self.cfg.speed
+                while len(hist) > 1 and f.t - hist[1][0] >= self.cfg.still_window_s:
+                    hist.popleft()
+                if height < self.cfg.still_below_y:
+                    still = False
+                elif hist and f.t - hist[0][0] >= 0.6 * self.cfg.still_window_s:
+                    t0, p0 = hist[0]
+                    speed = float(np.linalg.norm(points - p0, axis=1).mean()) / w / (f.t - t0)
+                    still = still and speed < self.cfg.still_speed
+                hist.append((f.t, points))
+        if self.cfg.still_s > 0 and self.body is not None:
+            if not still or moving:
+                self.still_since, self.parked = None, False
+            else:
+                self.still_since = self.still_since if self.still_since is not None else f.t
+                self.parked = f.t - self.still_since >= self.cfg.still_s
+        return moving or (raised and not self.parked)
 
     def current(self) -> LandmarkSequence | None:
         """The sign in progress so far (for live provisional guesses)."""
@@ -123,7 +153,8 @@ class SignSegmenter:
             self.active_since = self.active_since if self.active_since is not None else f.t
         else:
             self.active_since = None
-            self.rest_since = self.rest_since if self.rest_since is not None else f.t
+            if self.rest_since is None:  # parked hands have been resting since they became still
+                self.rest_since = self.still_since if self.parked else f.t
 
         if self.state == "idle":
             if self.active_since is not None and f.t - self.active_since >= cfg.on_s:
@@ -136,9 +167,12 @@ class SignSegmenter:
         if not (ended or too_long):
             return None, None
         end = self.rest_since if ended else f.t
+        if ended and self.parked and cfg.still_keep_s > 0:
+            end = min(f.t, end + cfg.still_keep_s)
         start = self.sign_start
         self.state, self.sign_start, self.active_since = "idle", None, None
-        self.last_end = {"reason": "rest" if ended else "max_length", "duration_s": round(end - start, 3)}
+        reason = ("still" if self.parked else "rest") if ended else "max_length"
+        self.last_end = {"reason": reason, "duration_s": round(end - start, 3)}
         if end - start < cfg.min_sign_s:
             return "too_short", None
         self.last_bounds = (start - cfg.pad_pre_s, end + cfg.pad_post_s)

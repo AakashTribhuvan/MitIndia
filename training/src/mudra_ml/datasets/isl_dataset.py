@@ -204,7 +204,7 @@ class ISLLandmarkDataset(Dataset):
         a, b, fps = found
         cfg = self._segment_cfg
         j = self.augment.segment_jitter_s
-        n = self.sequences[i].num_frames
+        n = (seq or self.sequences[i]).num_frames
         start = int(np.clip(round((a / fps - cfg.pad_pre_s + self.rng.uniform(-j, j)) * fps), 0, n - 1))
         end = int(np.clip(round((b / fps + cfg.pad_post_s + self.rng.uniform(-j, j)) * fps) + 1, start + 4, n))
         return start, end - start
@@ -245,12 +245,31 @@ class ISLLandmarkDataset(Dataset):
         )
 
     def _maybe_closeup(self, seq: LandmarkSequence) -> LandmarkSequence | None:
-        if self.augment is None or self.augment.closeup_prob <= 0 or self.rng.random() >= self.augment.closeup_prob:
-            return None
-        from mudra_ml.datasets.camera import CloseupParams, closeup_view
+        """A camera view of the clip (close-up webcam, hands resting at a desk, low frame rate), or None."""
+        from mudra_ml.datasets.camera import CloseupParams, DeskParams, closeup_view, desk_view, low_fps_view
 
-        view = closeup_view(seq, CloseupParams.sample(self.rng))
-        return view if view is not None and view.hand_present.any() else None
+        aug, view = self.augment, None
+        if aug is None:
+            return None
+        if aug.closeup_prob > 0 and self.rng.random() < aug.closeup_prob:
+            view = closeup_view(seq, CloseupParams.sample(self.rng))
+            if view is not None and aug.desk_share > 0 and self.rng.random() < aug.desk_share:
+                view = desk_view(view, DeskParams.sample(self.rng), self.rng, self._rest_shapes())
+            if view is not None and not view.hand_present.any():
+                view = None
+        if aug.low_fps_prob > 0 and self.rng.random() < aug.low_fps_prob:
+            view = low_fps_view(view or seq, self.rng.uniform(*aug.low_fps_range))
+        return view
+
+    def _rest_shapes(self) -> dict[int, np.ndarray]:
+        """Hand shapes (wrist-relative) of a random clip's last frames, for a hand resting unused."""
+        seq = self.sequences[int(self.rng.integers(len(self.sequences)))]
+        out = {}
+        for hand in range(2):
+            seen = np.flatnonzero(seq.hand_present[:, hand])
+            if len(seen):
+                out[hand] = seq.hands[seen[-1], hand] - seq.hands[seen[-1], hand, schema.WRIST]
+        return out
 
     def __getitem__(self, i: int) -> tuple[torch.Tensor, int]:
         if self.background is not None and self.rng.random() < self.background.prob:

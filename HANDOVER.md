@@ -6,14 +6,14 @@
 
 | Field | Value |
 |---|---|
-| Document version | 2 |
-| Last updated | 2026-10-12 |
-| Last updated at commit | first commit on `github.com/Addy-coder786/Mudra` after `21086c0` (see Section 21) |
-| Deployed model | `app/backend/models/isl_mudra_combined_v6_bilstm` (314 words + `_BACKGROUND_`) |
+| Document version | 3 |
+| Last updated | 2026-10-15 |
+| Last updated at commit | the commit tagged `v0.9.0` (see Section 21) |
+| Deployed model | `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`) |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
-| Tests | 61 passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) |
+| Tests | 66 passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) |
 | Repository | `https://github.com/Addy-coder786/Mudra` (remote `mudra`); older pushes: `Addy-coder786/ISL_Addy` (remote `origin`) |
-| Overall state | Recognition is accurate on held-out recordings; **live use on a real laptop webcam is not yet reliable** (Section 16) |
+| Overall state | Recognition is accurate on new takes by **signers seen in training**; accuracy for new people is unmeasured (about 67% on unseen recording sessions); **live use on a real laptop webcam is not yet reliable** (Section 16). Audit: `docs/AUDIT_2026-10-13.md` |
 
 ---
 
@@ -123,12 +123,13 @@ build a sentence and speak it.
 | Area | State | Evidence |
 |---|---|---|
 | Web app (Home, Communicate, Learn, Practice, Progress, Record) | Working | builds with `vite build`; pages load |
-| Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13) |
+| Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13), **same signers and sessions as training** |
 | Continuous-stream recognition (simulated live use) | Working in benchmark | 90-98% correct, 0-2.2% wrong on held-out streams |
 | Close-up laptop-webcam framing | Handled in benchmark | 90.0-90.6% correct (simulated close-up) |
 | New recording sessions / new people | Weak | 66.7% clip accuracy on unseen INCLUDE sessions |
 | **Real live use (developer's webcam)** | **Failing** | last session: 0 of 11 signs recognised; ~6.5 fps tracking; most signs hit the 6 s cap |
-| Few-shot new words (Record page) | Working | 79.5% recognised from 3 examples, 0.14% of known words taken over |
+| Few-shot new words (Record page) | Working | 79.5% recognised from 3 examples (queries from the same sessions as the examples), 0.14% of known words taken over |
+| Honesty of reported numbers | Audited 2026-10-13 | numbers reproduce; their caveats are in Section 13 and `docs/AUDIT_2026-10-13.md` |
 | App words NAMASTE, WATER, HELP, YES, NO, GOODBYE, HOME, PERSON | Not in the model | no training data; can be recorded on the Record page |
 | Practice-page coach | Rule-based, 8 signs | `islClassifier.js`; not the trained model |
 | Sentence-level recognition | Not available | a 101-sentence experiment reached 57% top-1 and was dropped |
@@ -156,7 +157,7 @@ build a sentence and speak it.
 │   │   │   ├── recognizer.py   SignRecognizer: one-clip prediction for /predict; readable() labels
 │   │   │   ├── recordings.py   RecordingStore: saves Record-page signs (.npz + manifest_app.csv), custom-word bank
 │   │   │   └── references.py   ReferenceClips: one real training example per word for /reference
-│   │   ├── models/isl_mudra_combined_v6_bilstm/   model.pt (state dict) + model_card.json
+│   │   ├── models/isl_mudra_combined_v8_desk_bilstm/   model.pt (state dict) + model_card.json (deployed; v6 beside it for rollback)
 │   │   └── tests/              test_api.py (API, streaming, recordings, references), conftest.py
 │   └── frontend/               React 18 + Vite 6 + Tailwind 3 + Three.js
 │       ├── public/models/      hand_landmarker.task, pose_landmarker_lite.task, face_landmarker.task
@@ -201,6 +202,7 @@ build a sentence and speak it.
 │   ├── README.md               data layout, sources, how to rebuild landmarks and splits
 │   └── metadata/               manifests + split sets: NOT in the repository (kept locally, shared separately)
 └── docs/
+    ├── AUDIT_2026-10-13.md     audit: what is real, what was faked or overstated, evidence, fixes
     ├── MUDRA_MASTER_PLAN.md    original analysis, dataset research, dated progress log (very detailed)
     ├── architecture.md         short architecture table
     └── planning/               the client's original review documents
@@ -355,13 +357,14 @@ Backend environment variables (`app/backend/mudra_api/settings.py`, `main.py`), 
 | Variable | Default | Meaning |
 |---|---|---|
 | `MUDRA_PORT` | 8000 | backend port (`python main.py`) |
-| `MUDRA_MODEL_DIR` | `app/backend/models/isl_mudra_combined_v6_bilstm` | exported model directory |
+| `MUDRA_MODEL_DIR` | `app/backend/models/isl_mudra_combined_v8_desk_bilstm` | exported model directory |
 | `MUDRA_DEVICE` | `cpu` | `cpu` or `cuda` |
-| `MUDRA_UNCERTAIN_THRESHOLD` | from model card (0.85) | `/predict` threshold override |
+| `MUDRA_UNCERTAIN_THRESHOLD` | from model card (0.65) | `/predict` threshold override |
 | `MUDRA_MIN_HAND_RATE` | 0.3 | `/predict`: below this share of frames with hands → `no_hands` |
 | `MUDRA_CORS_ORIGINS` | – | extra comma-separated origins |
 | `MUDRA_EVENTS_LOG` | `experiments/logs/stream_events.jsonl` | per-sign decision log |
 | `MUDRA_RECORDINGS_DIR` | `data` | root for `processed/landmarks/app` and `metadata/manifest_app.csv` |
+| `MUDRA_SESSION_DIR` | unset (off) | opt-in: save each live `/stream` session's landmarks + client diagnostics as `.npz` for `training/scripts/replay_session.py`; needs the signer's consent |
 | `MUDRA_REFERENCE_SPLIT` | `data/metadata/splits/combined_words_v3/train.csv` | where reference examples come from |
 
 Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:8000`),
@@ -432,11 +435,11 @@ input [B, 24, 162]
 - **Classes:** 315 = 314 words + `_BACKGROUND_` ("no sign yet": rest, partial signs, fidgets).
   Classes starting with `_` are hidden from all user-facing lists.
 - **Calibration:** temperature scaling fitted on validation, bounded to [0.25, 5]
-  (`metrics.fit_temperature`); v6 temperature = 0.698. Probabilities = softmax(logits / T).
+  (`metrics.fit_temperature`); v8 temperature = 0.689 (v6: 0.698). Probabilities = softmax(logits / T).
 - **Export** (`export_model.py`): `model.pt` (state dict only, `weights_only` loadable) +
   `model_card.json`: `name`, `created`, `source_run`, `classes`, `model_config`, `feature_config`,
   `feature_mean`, `feature_std`, `temperature`, `uncertain_threshold` (lowest threshold reaching
-  98.5% validation accuracy on kept clips, minimum 0.5; v6 = 0.85, used by `/predict` only),
+  98.5% validation accuracy on kept clips, minimum 0.5; v8 = 0.65 (v6: 0.85), used by `/predict` only),
   `threshold_selection`, `metrics`, `per_word_test` ({word: {correct, clips}}), `data`, `limitations`.
 - `ModelBundle` (`streaming.py`) loads a model directory and provides `probs()`, `embed()`,
   `probs_and_embeddings()` and `decide()`.
@@ -462,6 +465,11 @@ input [B, 24, 162]
 | `tta` | 1 | number of slightly shifted cuts averaged (1 = just the segment) |
 | `cooldown_s` | 1.0 | the same word is not added twice within this time |
 | `provisional_s` | 0.5 | interval of live guesses while signing |
+| `still_s` | 0.6 | parked hands: visible hands still this long count as resting wherever they are (0 = off); the rest starts when the stillness began, and only movement starts the next sign |
+| `still_speed` | 0.5 | mean speed of a hand's 21 points (shoulder widths / s) below which it is still |
+| `still_window_s` | 0.25 | span over which stillness speed is measured (so tracking jitter does not grow with fps); "moving" uses wrist speed over ≥ 0.1 s |
+| `still_below_y` | 0.0 | parking only applies to hands below the shoulder line |
+| `still_keep_s` | 0.0 (off) | a sign ended by stillness keeps this much of the still part. Validation, 10 fps, 0.4 s: normal 93.2 → 94.5%, close-up 90.3 → 91.1%, desk 73.9 → 74.6% correct (wrong +0.3 on desk); not confirmed on test, not enabled |
 
 **Activity** (`SignSegmenter._activity`): a frame is active if any visible hand is raised or moving.
 If shoulders have never been seen, any visible hand counts as active. **States:** `idle` →
@@ -564,8 +572,15 @@ The landmark `.npz` files must exist first (Section 12 explains how to rebuild t
 |---|---|---|---|---|
 | `include` | 4,292 | 263 | INCLUDE pose release (AI4Bharat OpenHands, Zenodo 6674324), converted | CC-BY-4.0 |
 | `include_video` | 2,795 (2,672 used) | 181 | INCLUDE original videos (Zenodo 4010759; 10 of 15 categories; at `C:\ISL\ISLTrainingData` as 29 zips), re-extracted with the browser's MediaPipe pipeline | CC-BY-4.0 |
-| `islwords` | 1,210 | 61 | MUDRA team recordings (`C:\ISL\archive\Video_Dataset`), each with two rotated copies grouped with the original | team; **licence to be confirmed before public release** |
+| `islwords` | 1,210 (1,204 in the splits) | 61 | MUDRA team recordings (`C:\ISL\archive\Video_Dataset`), 7 recording days, 41 words on a single day. Rotated copies (`_left_tilt`, `_right_tilt`) exist on disk but are in no manifest | team; **licence to be confirmed before public release** |
 | `app` | 0 so far | – | Record page | recorders; not committed |
+
+**Split structure (audit 2026-10-13).** Groups are one per recording: `include:clip:<id>` (shared by
+the video and pose copies) and `islwords:rec:<id>` (one per take). Grouping therefore stops the same
+recording from crossing splits, but not the same signer or session: 735 of 816 INCLUDE test clips
+have a same-word training clip 1-2 camera file numbers away, and all 181 team-word test clips have a
+same-word training take recorded within 2 minutes (median 9 s). The only session-disjoint split is
+`combined_words_v2_session` (INCLUDE sessions; its team-word part is still same-session).
 
 INCLUDE has no signer IDs. Other team data at `C:\ISL` not in use: 101 sentence videos
 (`Videos_Sentence_Level`), ISLVT (78 sentences, with Marathi), `dataset_ISL` alphabet images
@@ -625,6 +640,15 @@ motion blur in the full-body INCLUDE footage.
 
 ### Current results (deployed v6, held-out test, corrected labels)
 
+> **Read before quoting.** Test clips share signers and recording sessions with training (Section 12),
+> so these numbers mean "new takes by known signers". The best measured proxy for new people is the
+> unseen-session result below (about 67%). The pooled 98.2% counts 498 recordings twice (video and
+> pose copies); counting each of the 997 test recordings once (correct only if every copy is) gives
+> 97.6%. The stream benchmark is simulated from test clips, and scores only `ok` words; the app's
+> auto-add of unsure guesses changes correct words by 0 to +1.7 points and wrong words by -0.5 to
+> +0.9 points (test streams, 12 fps; `experiments/logs/live_fix/audit_test_v6_*`). The test split was
+> also used for some choices (Section 15), so it is no longer untouched.
+
 Clip level: INCLUDE videos **99.0%**, pose release **97.4%**, team words **99.4%**; overall 98.2%,
 top-5 100%, ECE 0.005. (Published INCLUDE references: 85.6% original paper, 93.5% OpenHands SL-GCN, 97.7% HWGAT.)
 
@@ -645,11 +669,12 @@ Other measurements:
 
 | Measurement | Result | Model |
 |---|---|---|
-| Unseen INCLUDE recording sessions, clip level | 66.7% (top-5 91%) | v3 recipe trained without those sessions |
+| Unseen INCLUDE recording sessions, clip level | 66.7% video copies (top-5 91.3%) / 66.8% pose copies (top-5 88.2%) | v3 recipe trained without those sessions |
 | …same, continuous streams | 48.4% correct / 9.5% wrong | same |
 | Accuracy vs training sessions per word | 2 sessions 64%, 3-4 → 69%, 5+ → 92% | same |
-| Few-shot, 1 / 3 / 5 examples | 70.1% / 79.5% / 81.6% recognised; 0.10-0.14% of known words taken over | v3 recipe without 25 words |
-| Team words, held-out recording day | 98.0% | combined v1 |
+| Few-shot, 1 / 3 / 5 examples | 70.1% / 79.5% / 81.6% recognised; 0.10-0.14% of known words taken over (queries recorded within 2 min of the examples) | v3 recipe without 25 words |
+| Team words, held-out recording day | 98.0% (99 clips, 20 words; split recovered from `a0c54f3` and checked: no word+day overlap; number not re-run) | combined v1 |
+| Team words in the unseen-session split | 96.7% (181 clips; **not** a held-out day: same word and day as training takes; earlier docs called it a held-out day) | v3 recipe |
 | INCLUDE-only model on team words | 8.3% | INCLUDE-only model (removed) |
 | Original rule-based / Random-Forest system | ~44% | original app |
 | **Developer's live webcam, 2026-10-07** | **0 of 11 signs**; ~6.5 fps; 6 of 11 hit `max_length` | v6 |
@@ -668,8 +693,9 @@ Other measurements:
 | v5 (velocity) | – | + velocity features | worse (95.4% vs 97.0% real-video clips); not deployed |
 | **v6** | `8d233f2` | trained on corrected labels | mean stream correct 89.5% → 92.4% (test, 12 fps) |
 | v7 (gap filling) | – | + hand gap interpolation | no better than v6; not deployed |
+| **v8** | `v0.9.0` (2026-10-15) | `mudra_words_desk.yaml`: + hands resting in view at a desk (half the close-up views) + 5-15 fps camera (30%); with the "parked hands" segmenter rule (`still_s` 0.6) | test streams, 7 fps: desk 38.8% → 74.1% correct; normal 92.2% → 88.6%, close-up 87.0% → 85.4%, close-up + rest 85.1% → 85.2%; clip test 98.06% (97.5% per recording). Desk-view clips: 75% → 97.2%. Not yet tried on a real webcam |
 
-Only v6 is kept in the repository (`53558e1` removed the others; they remain in git history).
+v8 is deployed; v6 is kept beside it for rollback until v8 is confirmed live (`53558e1` removed older models; they remain in git history).
 
 ---
 
@@ -680,7 +706,7 @@ Only v6 is kept in the repository (`53558e1` removed the others; they remain in 
 | Mirror augmentation (both dominant hands) | worse on unseen sessions (60.1% vs 66.7%) | session split |
 | Stronger geometric augmentation | 64.5% vs 66.7% | session split |
 | Pose dropout (hands-only samples) | 62.8% test (69.5% val) vs 66.7% | session split |
-| Velocity features | 95.4% vs 97.0% real-video clips | v3 split |
+| Velocity features | 95.4% vs 97.0% real-video clips | v3 split, **test** numbers (a test-set decision) |
 | End a sign when hands are held still (0.8 s) | −3 to −7 points correct on test streams | test streams, 3 framings |
 | …gentler version (1.2 s, 4 s cap) | −1 to −5 points on validation | validation streams |
 | Zoomed upper-body hand search during extraction | hands found 67% → 72-73% while signing; not worth re-extracting | 34-clip sample |
@@ -706,6 +732,20 @@ Priority order. Each item says what is known and what to do next.
    record 3 known words × 3 takes on the Record page and replay them offline
    (`eval_continuous.py --split data/metadata/manifest_app.csv`) to see why they are rejected;
    (c) compare their signing with the "How to sign it" examples (variant mismatch is likely).
+1b. **v8 + parked hands deployed 2026-10-13, untested on a real webcam.** Built for the live failure (hands
+   resting in view never ended a sign; v6 never saw resting hands). Trade-off on test streams (7 fps):
+   desk framing 38.8% → 74.1% correct, but normal 92.2% → 88.6% and close-up 87.0% → 85.4%. Remaining
+   desk misses are back-to-back signs merged into one segment. Next: a live test, ideally with
+   `MUDRA_SESSION_DIR` set (needs the signer's consent) and `training/scripts/replay_session.py`.
+   Rollback: `MUDRA_MODEL_DIR=app/backend/models/isl_mudra_combined_v6_bilstm` and `still_s` 0.
+1c. **Accuracy for new people is unmeasured** (audit 2026-10-13). No dataset has signer IDs and the
+   test split shares signers and sessions with training. Record several people on the Record page
+   and keep one or two entirely out of training as the test set.
+1d. **Custom words** (`fewshot.py`): the reported "confidence" is a cosine similarity, and a custom word
+   can override a `no_sign` decision; this path is not measured on idle movement, and `fewshot.json`
+   was tuned on the hold-out model at threshold 0.8, not on v6 at 0.7.
+1e. **Sign descriptions** in `islDictionary.js` are not checked against the ISLRTC dictionary (the
+   WATER description looks like the ASL sign); the "verified" flags in that file mean nothing.
 2. **Generalisation to new people is weak:** 66.7% on unseen recording sessions; accuracy follows
    the number of sessions per word. Needs more signers: FDMSE-ISL (2,002 words, 20 signers; access
    by email to the RKMVERI authors, https://cs.rkmvu.ac.in/~isl), CISLR (Google form), iSign
@@ -759,7 +799,7 @@ files in `training/assets/mediapipe/` from
 
 ## 18. Tests
 
-`pytest training app/backend/tests` → 61 passed (51 test functions, some parametrised), ~25 s.
+`pytest training app/backend/tests` → 66 passed (56 test functions, some parametrised), ~45 s.
 
 | File | Covers |
 |---|---|
@@ -767,8 +807,8 @@ files in `training/assets/mediapipe/` from
 | `training/tests/test_normalization.py` | aspect correction, shape/location features, mirroring |
 | `training/tests/test_splits.py` | grouped splits, locked splits, leakage check, group stripping |
 | `training/tests/test_extractor.py` | extraction of a blank video (empty masks, save/load round trip), hand assignment by pose wrists and its handedness fallback |
-| `training/tests/test_phase2.py` | dataset, background samples, segment and close-up crops, models, old model cards, metrics and calibration, config merging, transfer init, an end-to-end training run, gap filling |
-| `app/backend/tests/test_api.py` | /health, /labels, /model, /predict on held-out clips, no-hands, invalid payloads, missing model 503, early-sign behaviour, /stream WebSocket vs the Python implementation, segmenter states, recordings store + custom words, custom-word decision, /reference |
+| `training/tests/test_phase2.py` | dataset, background samples, segment, close-up, desk and low-fps crops, models, old model cards, metrics and calibration, config merging, transfer init, an end-to-end training run, gap filling, per-recording test counts |
+| `app/backend/tests/test_api.py` | /health, /labels, /model, /predict on held-out clips, no-hands, invalid payloads, missing model 503, early-sign behaviour, /stream WebSocket vs the Python implementation, segmenter states, parked hands, live-session saving, recordings store + custom words, custom-word decision, /reference |
 
 `app/backend/tests/conftest.py` redirects the event log so tests never write to the real one. Tests
 that need the model or landmark data skip automatically when those files are missing.
@@ -818,6 +858,28 @@ that need the model or landmark data skip automatically when those files are mis
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-15 · tag `v0.9.0` · audit, v8 deployment, live-webcam work (2026-10-12 to 10-15)
+- Checkpoint before the v1.0 plan (Section 16; blueprint to follow). Contents below.
+- 2026-10-15: `still_keep_s` setting added to the segmenter (default 0 = unchanged behaviour); measured
+  on validation only (Section 9). Diagnosis of the live over-cutting is pending labelled recordings.
+
+#### 2026-10-13 · audit of claims, fake UI values and evaluation
+- Full audit in `docs/AUDIT_2026-10-13.md` (evidence for every finding). Reported model numbers
+  reproduce exactly; the training pipeline has no test leakage; but test clips share signers and
+  sessions with training, the pooled 98.2% double-counts 498 recordings (97.6% per recording), and
+  the "team words, held-out day 96.7%" row was not a held-out day.
+- Frontend: removed invented confidences (WATER/NAMASTE/HELP), invented metrics, fabricated
+  testimonials, false "zero biometric recording" and "WCAG AAA" claims, "AI" labels on the rule
+  coach and "ISLRTC verified" badges; fixed the speech-speed and text-size settings, the quick-add
+  chips and several labels.
+- `export_model.py`: per-word test counts per recording, accurate limitations, path bug; v6
+  `model_card.json` metadata regenerated (weights untouched). `eval_continuous.py --tune` refuses
+  test splits. One test added (66 pass).
+- Deployed v8 (`isl_mudra_combined_v8_desk_bilstm`) with the parked-hands rule (`still_s` 0.6), the
+  live-webcam work of 2026-10-12: desk / low-fps simulations, session saving (`MUDRA_SESSION_DIR`,
+  opt-in), `replay_session.py`, fps / GPU diagnostics on Communicate. Effect: Section 14 (v8 row).
+  v6 is kept in `app/backend/models/` for rollback until a live test confirms v8.
 
 ### 2026-10-12 · first push to `Addy-coder786/Mudra` · code and models only
 - New repository `https://github.com/Addy-coder786/Mudra`. History up to `21086c0` was pushed as is;

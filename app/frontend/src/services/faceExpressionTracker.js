@@ -3,6 +3,7 @@ import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
 const WASM_PATH = '/wasm'
 const MODEL_PATH = '/models/face_landmarker.task'
 const TARGET_FPS = 5 // facial cues change slowly; keep the GPU for hand and body tracking
+const SLOW_FPS = 1 // while hand tracking cannot keep up with the camera
 
 class FaceExpressionTracker {
   constructor() {
@@ -15,6 +16,12 @@ class FaceExpressionTracker {
     this.running = false
     this.lastVideoTime = -1
     this.lastInferenceAt = 0
+    this.targetFps = TARGET_FPS
+  }
+
+  /** Hands come first: run face cues at 1 fps while hand tracking is the bottleneck. */
+  setSlow(slow) {
+    this.targetFps = slow ? SLOW_FPS : TARGET_FPS
   }
 
   async initialize() {
@@ -69,7 +76,7 @@ class FaceExpressionTracker {
 
     const video = this.videoElement
     const isNewVideoFrame = video.currentTime !== this.lastVideoTime
-    const isDue = timestamp - this.lastInferenceAt >= 1000 / TARGET_FPS
+    const isDue = timestamp - this.lastInferenceAt >= 1000 / this.targetFps
 
     if (video.readyState >= 2 && !video.paused && isNewVideoFrame && isDue) {
       try {

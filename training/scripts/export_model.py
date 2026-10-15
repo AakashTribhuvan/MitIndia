@@ -29,6 +29,20 @@ from mudra_ml.datasets.isl_dataset import FeatureConfig, ISLLandmarkDataset
 from mudra_ml.evaluation.evaluate import load_checkpoint_model, predict
 from mudra_ml.evaluation.metrics import softmax
 
+def limitations(num_classes: int) -> list[str]:
+    return [
+        f"Vocabulary is {num_classes} classes (including _BACKGROUND_); MUDRA app words such as NAMASTE, WATER and HELP are not included.",
+        "Test clips come from the same signers and recording sessions as training clips (no dataset has signer IDs): "
+        "90% of INCLUDE test clips have a same-word training take 1-2 file numbers away, and every team-word test clip a "
+        "take recorded within 2 minutes. Test accuracy therefore measures new takes by known signers, not new people; "
+        "on held-out INCLUDE sessions the same recipe reaches about 67%.",
+        "Trained on isolated signs; live use cuts the stream into signs with the segmenter in streaming.py and classifies "
+        "each whole sign once (no continuous sentence recognition).",
+        "Temperature and threshold are fitted on the validation split, which shares signers and sessions with training; "
+        "confidence may be over-confident on new people, cameras or lighting.",
+    ]
+
+
 DATA_SOURCES = {
     "include": {
         "name": "INCLUDE (Sridhar et al., ACM Multimedia 2020)",
@@ -38,7 +52,7 @@ DATA_SOURCES = {
         "Recognition. ACM MM 2020. Pose data via AI4Bharat OpenHands.",
     },
     "combined": {
-        "name": "INCLUDE (263 words) + MUDRA isolated-word videos (61 words, C:\\ISL\archive)",
+        "name": "INCLUDE (263 words) + MUDRA isolated-word videos (61 words, C:\\ISL\\archive)",
         "pose_release": "INCLUDE via OpenHands (Zenodo 6674324); MUDRA words extracted locally with MediaPipe Tasks",
         "license": "INCLUDE: CC-BY-4.0. MUDRA word videos: provided by the team; source and licence to be confirmed",
         "attribution": "Sridhar et al., INCLUDE, ACM MM 2020; MUDRA team recordings.",
@@ -63,19 +77,32 @@ def choose_threshold(probs: np.ndarray, labels: np.ndarray, target: float, minim
     return {"threshold": chosen, "target_accuracy": target, "minimum_threshold": minimum, "validation_curve": table}
 
 
-def per_word_test_accuracy(run_dir: Path) -> dict:
-    """{word: {"correct": c, "clips": n}} from the run's held-out test predictions (empty if missing)."""
+def per_word_test_accuracy(run_dir: Path, split_dir: Path | None = None) -> dict:
+    """{word: {"correct": c, "clips": n}} from the run's held-out test predictions (empty if missing).
+
+    Counts recordings, not rows: the INCLUDE video and pose-release copies of one recording share a
+    ``group_id`` in the split's test.csv and are counted once, as correct only if every copy is.
+    """
     import csv
 
     path = run_dir / "reports" / "test_predictions.csv"
     if not path.exists():
         return {}
-    out: dict = {}
+    groups: dict = {}
+    test_csv = Path(split_dir) / "test.csv" if split_dir else None
+    if test_csv and test_csv.exists():
+        with test_csv.open(encoding="utf-8") as f:
+            groups = {r["sample_id"]: r["group_id"] for r in csv.DictReader(f)}
+    recordings: dict = {}
     with path.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            entry = out.setdefault(row["true"], {"correct": 0, "clips": 0})
-            entry["clips"] += 1
-            entry["correct"] += int(row["true"] == row["predicted"])
+            key = (row["true"], groups.get(row["sample_id"], row["sample_id"]))
+            recordings[key] = recordings.get(key, True) and row["true"] == row["predicted"]
+    out: dict = {}
+    for (word, _), ok in recordings.items():
+        entry = out.setdefault(word, {"correct": 0, "clips": 0})
+        entry["clips"] += 1
+        entry["correct"] += int(ok)
     return out
 
 
@@ -123,14 +150,9 @@ def main() -> None:
         "threshold_selection": threshold,
         "metrics": {"validation": summary["val"], "test": summary["test"], "test_samples": summary["test_samples"]},
         "data": DATA_SOURCES[args.data_source],
-        "limitations": [
-            f"Vocabulary is {len(ckpt['classes'])} words; MUDRA app words such as NAMASTE, WATER and HELP are not included.",
-            "INCLUDE has no signer IDs, so the test score is not signer-independent; expect lower accuracy on new people.",
-            "Trained on isolated signs recorded from rest to rest; continuous signing is approximated with a sliding window.",
-            "Confidence is calibrated on INCLUDE validation data and may be over-confident on very different cameras or lighting.",
-        ],
+        "limitations": limitations(len(ckpt["classes"])),
     }
-    per_word = per_word_test_accuracy(run_dir)
+    per_word = per_word_test_accuracy(run_dir, project_path(cfg["data"]["split_dir"]))
     if per_word:
         card["per_word_test"] = per_word
     (out / "model_card.json").write_text(json.dumps(card, indent=2), encoding="utf-8")

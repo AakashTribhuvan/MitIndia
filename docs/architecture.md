@@ -15,7 +15,7 @@ Short summary. The detailed, maintained version is `HANDOVER.md` (Sections 4-11)
 | Backend | `app/backend/mudra_api/recordings.py` | Stores app recordings as `.npz` + `data/metadata/manifest_app.csv` (signer and session groups) and keeps the custom-word bank |
 | Shared | `training/src/mudra_ml/fewshot.py` | Custom words: prototype of each word's recorded examples in the model's embedding space; accepted only when the model is not confident about a known word (limits in `training/configs/fewshot.json`) |
 | Shared | `training/src/mudra_ml/streaming.py` | SignSegmenter (resting → signing → ended) and StreamingRecognizer (whole-sign classification, smoothing, thresholds, cooldown). The live API and the benchmarks use the same code |
-| Model | `app/backend/models/isl_mudra_combined_v6_bilstm` | Landmark MLP → BiLSTM → attention pooling; 314 words plus a "no sign" class |
+| Model | `app/backend/models/isl_mudra_combined_v8_desk_bilstm` | Landmark MLP → BiLSTM → attention pooling; 314 words plus a "no sign" class |
 
 When the backend is offline, the Communicate page falls back to the rule-based matcher in
 `islClassifier.js` (8 static signs). The Practice page always uses that rule engine for its

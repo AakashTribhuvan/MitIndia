@@ -1,0 +1,8 @@
+# v8 candidate: mudra_words.yaml + hands resting in view at a desk + low camera frame rates.
+# Live log 2026-10-07/12: hands visible in 90-100% of every segment, 6-8 fps; v6 never saw either.
+#     python training/scripts/train.py --config mudra_words_desk.yaml --name combined_v8_desk
+base: mudra_words.yaml
+
+augment:
+  desk_share: 0.5          # half the close-up views: hands rest in view before / after the sign
+  low_fps_prob: 0.3        # camera at 5-15 frames per second

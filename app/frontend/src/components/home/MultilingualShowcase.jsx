@@ -47,7 +47,7 @@ export default function MultilingualShowcase() {
           </h2>
 
           <p className="text-mudra-indigo-600/80 text-base sm:text-lg max-w-2xl mx-auto">
-            MUDRA bridges visual signs into natural spoken phrasing in English, हिंदी, and मराठी. One gesture, heard clearly by everyone.
+            Recognised words are spoken in English, हिंदी or मराठी. Full Hindi and Marathi sentences exist for a set of common phrases; other words are read out as the English word.
           </p>
         </div>
 

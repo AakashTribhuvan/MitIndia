@@ -304,13 +304,13 @@ export default function PracticePage({ targetSignId = 'HELLO', onNavigate }) {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-mudra-lavender-100 text-mudra-lavender-700 text-xs font-bold font-mono mb-1">
             <Sparkles className="w-3.5 h-3.5 text-mudra-lavender-600" />
-            <span>AI SIGN COACH & 3D AVATAR REFERENCE</span>
+            <span>SIGN COACH (RULE-BASED) & 3D AVATAR REFERENCE</span>
           </div>
           <h1 className="font-display font-extrabold text-3xl sm:text-4xl text-mudra-indigo-900">
             Interactive Practice Studio
           </h1>
           <p className="text-sm text-mudra-indigo-600 mt-1">
-            Watch the 3D MUDRA instructor on the left, then perform the sign on the right for real-time AI evaluation.
+            Watch the 3D MUDRA instructor on the left, then hold the sign on the right: hand shape and position are compared with hand-written rules (single frame, movement is not checked).
           </p>
         </div>
 
@@ -539,7 +539,7 @@ export default function PracticePage({ targetSignId = 'HELLO', onNavigate }) {
               {/* Actionable Coaching Message */}
               <div className="p-4 rounded-2xl bg-gradient-to-r from-mudra-lavender-50 via-white to-mudra-peach-50 border border-mudra-lavender-300">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-mudra-lavender-800 font-display mb-1">
-                  AI Coach Guidance
+                  Coach Guidance
                 </div>
                 <p className="text-xs sm:text-sm text-mudra-indigo-900 font-medium leading-relaxed">
                   "{evaluation.feedbackMessage}"

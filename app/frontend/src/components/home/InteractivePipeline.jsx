@@ -171,7 +171,7 @@ export default function InteractivePipeline({ onNavigate }) {
                     : 'bg-white text-mudra-indigo-300 border border-mudra-lavender-200'
                 }`}>
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>UNDERSTOOD</span>
+                  <span>DEMO</span>
                 </div>
               </div>
 
@@ -208,7 +208,7 @@ export default function InteractivePipeline({ onNavigate }) {
                       ISL SIGN: {activeSign.label}
                     </div>
                     <div className="text-xs text-mudra-indigo-600 leading-relaxed">
-                      MUDRA recognizes the sign and converts its meaning into natural language.
+                      Demonstration: the avatar performs the sign and the example meaning is spoken. Live recognition is on the Communicate page.
                     </div>
                   </div>
                 </div>

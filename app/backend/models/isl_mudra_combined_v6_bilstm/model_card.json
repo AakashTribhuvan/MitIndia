@@ -792,737 +792,737 @@
     "test_samples": 1495
   },
   "data": {
-    "name": "INCLUDE (263 words) + MUDRA isolated-word videos (61 words, C:\\ISL\u0007rchive)",
+    "name": "INCLUDE (263 words) + MUDRA isolated-word videos (61 words, C:\\ISL\\archive)",
     "pose_release": "INCLUDE via OpenHands (Zenodo 6674324); MUDRA words extracted locally with MediaPipe Tasks",
     "license": "INCLUDE: CC-BY-4.0. MUDRA word videos: provided by the team; source and licence to be confirmed",
     "attribution": "Sridhar et al., INCLUDE, ACM MM 2020; MUDRA team recordings."
   },
   "limitations": [
-    "Vocabulary is 315 words; MUDRA app words such as NAMASTE, WATER and HELP are not included.",
-    "INCLUDE has no signer IDs, so the test score is not signer-independent; expect lower accuracy on new people.",
-    "Trained on isolated signs recorded from rest to rest; continuous signing is approximated with a sliding window.",
-    "Confidence is calibrated on INCLUDE validation data and may be over-confident on very different cameras or lighting."
+    "Vocabulary is 315 classes (including _BACKGROUND_); MUDRA app words such as NAMASTE, WATER and HELP are not included.",
+    "Test clips come from the same signers and recording sessions as training clips (no dataset has signer IDs): 90% of INCLUDE test clips have a same-word training take 1-2 file numbers away, and every team-word test clip a take recorded within 2 minutes. Test accuracy therefore measures new takes by known signers, not new people; on held-out INCLUDE sessions the same recipe reaches about 67%.",
+    "Trained on isolated signs; live use cuts the stream into signs with the segmenter in streaming.py and classifies each whole sign once (no continuous sentence recognition).",
+    "Temperature and threshold are fitted on the validation split, which shares signers and sessions with training; confidence may be over-confident on new people, cameras or lighting."
   ],
   "per_word_test": {
     "LOUD": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "MEAN": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "RICH": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "POOR": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "THICK": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "THIN": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "EXPENSIVE": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "CHEAP": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "FLAT": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "CURVED": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "MALE": {
-      "correct": 3,
-      "clips": 4
-    },
-    "QUIET": {
-      "correct": 8,
-      "clips": 8
-    },
-    "FEMALE": {
-      "correct": 3,
-      "clips": 4
-    },
-    "TIGHT": {
-      "correct": 2,
-      "clips": 2
-    },
-    "LOOSE": {
-      "correct": 2,
-      "clips": 2
-    },
-    "HIGH": {
-      "correct": 4,
-      "clips": 4
-    },
-    "LOW": {
-      "correct": 2,
-      "clips": 2
-    },
-    "SOFT": {
-      "correct": 2,
-      "clips": 2
-    },
-    "HARD": {
-      "correct": 4,
-      "clips": 4
-    },
-    "DEEP": {
-      "correct": 4,
-      "clips": 4
-    },
-    "SHALLOW": {
-      "correct": 2,
-      "clips": 2
-    },
-    "CLEAN": {
-      "correct": 5,
-      "clips": 5
-    },
-    "HAPPY": {
-      "correct": 8,
-      "clips": 8
-    },
-    "DIRTY": {
-      "correct": 2,
-      "clips": 2
-    },
-    "STRONG": {
-      "correct": 4,
-      "clips": 4
-    },
-    "WEAK": {
-      "correct": 4,
-      "clips": 4
-    },
-    "DEAD": {
-      "correct": 2,
-      "clips": 2
-    },
-    "ALIVE": {
-      "correct": 2,
-      "clips": 2
-    },
-    "HEAVY": {
-      "correct": 2,
-      "clips": 2
-    },
-    "LIGHT": {
-      "correct": 4,
-      "clips": 4
-    },
-    "FAMOUS": {
-      "correct": 2,
-      "clips": 2
-    },
-    "SAD": {
-      "correct": 2,
-      "clips": 2
-    },
-    "BEAUTIFUL": {
-      "correct": 2,
-      "clips": 2
-    },
-    "UGLY": {
-      "correct": 4,
-      "clips": 4
-    },
-    "DEAF": {
-      "correct": 2,
-      "clips": 2
-    },
-    "LONG": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SHORT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "BLIND": {
-      "correct": 2,
-      "clips": 2
-    },
-    "TALL": {
-      "correct": 8,
-      "clips": 8
-    },
-    "WIDE": {
-      "correct": 8,
-      "clips": 8
-    },
-    "NARROW": {
-      "correct": 8,
-      "clips": 8
-    },
-    "BIG_LARGE": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SMALL_LITTLE": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SLOW": {
-      "correct": 7,
-      "clips": 8
-    },
-    "FAST": {
-      "correct": 7,
-      "clips": 7
-    },
-    "HOT": {
-      "correct": 7,
-      "clips": 7
-    },
-    "COLD": {
-      "correct": 8,
-      "clips": 8
-    },
-    "WARM": {
-      "correct": 8,
-      "clips": 8
-    },
-    "NICE": {
-      "correct": 2,
-      "clips": 2
-    },
-    "COOL": {
-      "correct": 8,
-      "clips": 8
-    },
-    "NEW": {
-      "correct": 7,
-      "clips": 7
-    },
-    "OLD": {
-      "correct": 8,
-      "clips": 8
-    },
-    "YOUNG": {
-      "correct": 6,
-      "clips": 6
-    },
-    "GOOD": {
-      "correct": 8,
-      "clips": 8
-    },
-    "BAD": {
-      "correct": 5,
-      "clips": 6
-    },
-    "WET": {
-      "correct": 8,
-      "clips": 8
-    },
-    "DRY": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SICK": {
-      "correct": 8,
-      "clips": 8
-    },
-    "HEALTHY": {
-      "correct": 8,
-      "clips": 8
-    },
-    "DOG": {
-      "correct": 6,
-      "clips": 6
-    },
-    "CAT": {
-      "correct": 7,
-      "clips": 7
-    },
-    "FISH": {
-      "correct": 8,
-      "clips": 8
-    },
-    "BIRD": {
-      "correct": 8,
-      "clips": 8
-    },
-    "COW": {
-      "correct": 7,
-      "clips": 7
-    },
-    "MOUSE": {
-      "correct": 7,
-      "clips": 8
-    },
-    "HORSE": {
-      "correct": 7,
-      "clips": 7
-    },
-    "ANIMAL": {
-      "correct": 8,
-      "clips": 8
-    },
-    "HAT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "DRESS": {
-      "correct": 3,
-      "clips": 8
-    },
-    "SUIT": {
-      "correct": 7,
-      "clips": 7
-    },
-    "SKIRT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SHIRT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "T_SHIRT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "PANT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SHOES": {
-      "correct": 8,
-      "clips": 8
-    },
-    "POCKET": {
-      "correct": 7,
-      "clips": 7
-    },
-    "CLOTHING": {
-      "correct": 5,
-      "clips": 8
-    },
-    "RED": {
-      "correct": 7,
-      "clips": 8
-    },
-    "GREEN": {
-      "correct": 8,
-      "clips": 8
-    },
-    "BLUE": {
-      "correct": 8,
-      "clips": 8
-    },
-    "YELLOW": {
-      "correct": 8,
-      "clips": 8
-    },
-    "BROWN": {
-      "correct": 8,
-      "clips": 8
-    },
-    "PINK": {
-      "correct": 7,
-      "clips": 8
-    },
-    "ORANGE": {
-      "correct": 7,
-      "clips": 7
-    },
-    "BLACK": {
-      "correct": 8,
-      "clips": 8
-    },
-    "WHITE": {
-      "correct": 8,
-      "clips": 8
-    },
-    "GREY": {
-      "correct": 8,
-      "clips": 8
-    },
-    "COLOUR": {
-      "correct": 8,
-      "clips": 8
-    },
-    "SUNDAY": {
-      "correct": 2,
-      "clips": 2
-    },
-    "MONDAY": {
-      "correct": 2,
-      "clips": 2
-    },
-    "TUESDAY": {
       "correct": 1,
       "clips": 2
     },
-    "WEDNESDAY": {
+    "QUIET": {
+      "correct": 4,
+      "clips": 4
+    },
+    "FEMALE": {
+      "correct": 1,
+      "clips": 2
+    },
+    "TIGHT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "LOOSE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HIGH": {
       "correct": 2,
       "clips": 2
+    },
+    "LOW": {
+      "correct": 1,
+      "clips": 1
+    },
+    "SOFT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HARD": {
+      "correct": 2,
+      "clips": 2
+    },
+    "DEEP": {
+      "correct": 2,
+      "clips": 2
+    },
+    "SHALLOW": {
+      "correct": 1,
+      "clips": 1
+    },
+    "CLEAN": {
+      "correct": 4,
+      "clips": 4
+    },
+    "HAPPY": {
+      "correct": 4,
+      "clips": 4
+    },
+    "DIRTY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "STRONG": {
+      "correct": 2,
+      "clips": 2
+    },
+    "WEAK": {
+      "correct": 2,
+      "clips": 2
+    },
+    "DEAD": {
+      "correct": 1,
+      "clips": 1
+    },
+    "ALIVE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HEAVY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "LIGHT": {
+      "correct": 2,
+      "clips": 2
+    },
+    "FAMOUS": {
+      "correct": 1,
+      "clips": 1
+    },
+    "SAD": {
+      "correct": 1,
+      "clips": 1
+    },
+    "BEAUTIFUL": {
+      "correct": 1,
+      "clips": 1
+    },
+    "UGLY": {
+      "correct": 2,
+      "clips": 2
+    },
+    "DEAF": {
+      "correct": 1,
+      "clips": 1
+    },
+    "LONG": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SHORT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BLIND": {
+      "correct": 1,
+      "clips": 1
+    },
+    "TALL": {
+      "correct": 4,
+      "clips": 4
+    },
+    "WIDE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "NARROW": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BIG_LARGE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SMALL_LITTLE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SLOW": {
+      "correct": 3,
+      "clips": 4
+    },
+    "FAST": {
+      "correct": 4,
+      "clips": 4
+    },
+    "HOT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "COLD": {
+      "correct": 4,
+      "clips": 4
+    },
+    "WARM": {
+      "correct": 4,
+      "clips": 4
+    },
+    "NICE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "COOL": {
+      "correct": 4,
+      "clips": 4
+    },
+    "NEW": {
+      "correct": 4,
+      "clips": 4
+    },
+    "OLD": {
+      "correct": 4,
+      "clips": 4
+    },
+    "YOUNG": {
+      "correct": 4,
+      "clips": 4
+    },
+    "GOOD": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BAD": {
+      "correct": 3,
+      "clips": 4
+    },
+    "WET": {
+      "correct": 4,
+      "clips": 4
+    },
+    "DRY": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SICK": {
+      "correct": 4,
+      "clips": 4
+    },
+    "HEALTHY": {
+      "correct": 4,
+      "clips": 4
+    },
+    "DOG": {
+      "correct": 4,
+      "clips": 4
+    },
+    "CAT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "FISH": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BIRD": {
+      "correct": 4,
+      "clips": 4
+    },
+    "COW": {
+      "correct": 4,
+      "clips": 4
+    },
+    "MOUSE": {
+      "correct": 3,
+      "clips": 4
+    },
+    "HORSE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "ANIMAL": {
+      "correct": 4,
+      "clips": 4
+    },
+    "HAT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "DRESS": {
+      "correct": 1,
+      "clips": 4
+    },
+    "SUIT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SKIRT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SHIRT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "T_SHIRT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "PANT": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SHOES": {
+      "correct": 4,
+      "clips": 4
+    },
+    "POCKET": {
+      "correct": 4,
+      "clips": 4
+    },
+    "CLOTHING": {
+      "correct": 2,
+      "clips": 4
+    },
+    "RED": {
+      "correct": 3,
+      "clips": 4
+    },
+    "GREEN": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BLUE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "YELLOW": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BROWN": {
+      "correct": 4,
+      "clips": 4
+    },
+    "PINK": {
+      "correct": 3,
+      "clips": 4
+    },
+    "ORANGE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "BLACK": {
+      "correct": 4,
+      "clips": 4
+    },
+    "WHITE": {
+      "correct": 4,
+      "clips": 4
+    },
+    "GREY": {
+      "correct": 4,
+      "clips": 4
+    },
+    "COLOUR": {
+      "correct": 4,
+      "clips": 4
+    },
+    "SUNDAY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "MONDAY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "TUESDAY": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WEDNESDAY": {
+      "correct": 1,
+      "clips": 1
     },
     "THURSDAY": {
       "correct": 1,
       "clips": 1
     },
     "FRIDAY": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "SATURDAY": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "TODAY": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "TOMORROW": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "YESTERDAY": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "WEEK": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "MONTH": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "YEAR": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "HOUR": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "MINUTE": {
       "correct": 1,
       "clips": 1
     },
     "SECOND": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "MORNING": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "AFTERNOON": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "EVENING": {
       "correct": 1,
       "clips": 1
     },
     "NIGHT": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "TIME": {
-      "correct": 2,
-      "clips": 2
+      "correct": 1,
+      "clips": 1
     },
     "CLOCK": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "LAMP": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "FAN": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "CELL_PHONE": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "COMPUTER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "LAPTOP": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "SCREEN": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "CAMERA": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "TELEVISION": {
-      "correct": 5,
-      "clips": 6
+      "correct": 2,
+      "clips": 3
     },
     "RADIO": {
-      "correct": 5,
-      "clips": 6
+      "correct": 2,
+      "clips": 3
     },
     "HELLO": {
-      "correct": 11,
-      "clips": 11
+      "correct": 7,
+      "clips": 7
     },
     "HOW_ARE_YOU": {
-      "correct": 8,
-      "clips": 8
-    },
-    "ALRIGHT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "GOOD_MORNING": {
-      "correct": 11,
-      "clips": 11
-    },
-    "GOOD_AFTERNOON": {
-      "correct": 15,
-      "clips": 15
-    },
-    "GOOD_EVENING": {
-      "correct": 14,
-      "clips": 14
-    },
-    "GOOD_NIGHT": {
-      "correct": 8,
-      "clips": 8
-    },
-    "THANK_YOU": {
-      "correct": 11,
-      "clips": 11
-    },
-    "PLEASED": {
-      "correct": 8,
-      "clips": 8
-    },
-    "TABLE": {
-      "correct": 6,
-      "clips": 6
-    },
-    "CHAIR": {
-      "correct": 6,
-      "clips": 6
-    },
-    "BED": {
-      "correct": 6,
-      "clips": 6
-    },
-    "DREAM": {
-      "correct": 6,
-      "clips": 6
-    },
-    "WINDOW": {
-      "correct": 6,
-      "clips": 6
-    },
-    "DOOR": {
-      "correct": 6,
-      "clips": 6
-    },
-    "BEDROOM": {
-      "correct": 6,
-      "clips": 6
-    },
-    "KITCHEN": {
       "correct": 4,
       "clips": 4
     },
-    "BATHROOM": {
-      "correct": 8,
-      "clips": 8
+    "ALRIGHT": {
+      "correct": 4,
+      "clips": 4
     },
-    "PENCIL": {
-      "correct": 6,
-      "clips": 6
+    "GOOD_MORNING": {
+      "correct": 7,
+      "clips": 7
     },
-    "PEN": {
-      "correct": 6,
-      "clips": 6
-    },
-    "PHOTOGRAPH": {
-      "correct": 6,
-      "clips": 6
-    },
-    "SOAP": {
-      "correct": 5,
-      "clips": 5
-    },
-    "BOOK": {
-      "correct": 6,
-      "clips": 6
-    },
-    "KEY": {
+    "GOOD_AFTERNOON": {
       "correct": 9,
       "clips": 9
     },
-    "PAGE": {
+    "GOOD_EVENING": {
+      "correct": 7,
+      "clips": 7
+    },
+    "GOOD_NIGHT": {
       "correct": 4,
       "clips": 4
+    },
+    "THANK_YOU": {
+      "correct": 7,
+      "clips": 7
+    },
+    "PLEASED": {
+      "correct": 4,
+      "clips": 4
+    },
+    "TABLE": {
+      "correct": 3,
+      "clips": 3
+    },
+    "CHAIR": {
+      "correct": 3,
+      "clips": 3
+    },
+    "BED": {
+      "correct": 3,
+      "clips": 3
+    },
+    "DREAM": {
+      "correct": 3,
+      "clips": 3
+    },
+    "WINDOW": {
+      "correct": 3,
+      "clips": 3
+    },
+    "DOOR": {
+      "correct": 3,
+      "clips": 3
+    },
+    "BEDROOM": {
+      "correct": 3,
+      "clips": 3
+    },
+    "KITCHEN": {
+      "correct": 2,
+      "clips": 2
+    },
+    "BATHROOM": {
+      "correct": 4,
+      "clips": 4
+    },
+    "PENCIL": {
+      "correct": 3,
+      "clips": 3
+    },
+    "PEN": {
+      "correct": 3,
+      "clips": 3
+    },
+    "PHOTOGRAPH": {
+      "correct": 3,
+      "clips": 3
+    },
+    "SOAP": {
+      "correct": 3,
+      "clips": 3
+    },
+    "BOOK": {
+      "correct": 3,
+      "clips": 3
+    },
+    "KEY": {
+      "correct": 6,
+      "clips": 6
+    },
+    "PAGE": {
+      "correct": 2,
+      "clips": 2
     },
     "PAINT": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "PAPER": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "LETTER": {
-      "correct": 4,
-      "clips": 4
+      "correct": 2,
+      "clips": 2
     },
     "LOCK": {
-      "correct": 5,
-      "clips": 5
+      "correct": 3,
+      "clips": 3
     },
     "TELEPHONE": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "BAG": {
+      "correct": 2,
+      "clips": 2
+    },
+    "BOX": {
       "correct": 4,
       "clips": 4
     },
-    "BOX": {
-      "correct": 8,
-      "clips": 8
-    },
     "GIFT": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "CARD": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "RING": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "TOOL": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "TEACHER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "STUDENT": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "LAWYER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "DOCTOR": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "PATIENT": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "WAITER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "SECRETARY": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "PRIEST": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "POLICE": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "SOLDIER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "ARTIST": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "AUTHOR": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "MANAGER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "REPORTER": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "ACTOR": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "JOB": {
-      "correct": 6,
-      "clips": 6
+      "correct": 3,
+      "clips": 3
     },
     "PLANE": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "CAR": {
-      "correct": 7,
-      "clips": 7
+      "correct": 4,
+      "clips": 4
     },
     "TRUCK": {
-      "correct": 7,
-      "clips": 7
+      "correct": 4,
+      "clips": 4
     },
     "BICYCLE": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "BUS": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "BOAT": {
-      "correct": 5,
-      "clips": 6
+      "correct": 3,
+      "clips": 4
     },
     "TRAIN_TICKET": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "TRANSPORTATION": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "TRAIN": {
-      "correct": 8,
-      "clips": 8
+      "correct": 4,
+      "clips": 4
     },
     "SON": {
       "correct": 4,

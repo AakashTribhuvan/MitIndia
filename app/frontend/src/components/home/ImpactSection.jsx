@@ -6,27 +6,21 @@ export default function ImpactSection() {
     {
       title: 'Deaf & Hard-of-Hearing Signers',
       role: 'Express freely & autonomously',
-      quote: '“At the bank and railway counter, having MUDRA translate my signs into clear speech gives me complete independence without needing an escort.”',
-      name: 'Aarav Sharma',
-      location: 'New Delhi',
+      quote: 'Goal: sign at a counter or in class and have the words spoken aloud, without an interpreter.',
       badge: 'ISL Native User',
       color: 'lavender'
     },
     {
       title: 'Hearing Family & Friends',
       role: 'Connect with loved ones',
-      quote: '“My 7-year-old daughter is Deaf. MUDRA helped me and my parents learn ISL vocabulary in small daily 10-minute AI practice sessions.”',
-      name: 'Priya Mukherjee',
-      location: 'Bengaluru',
+      quote: 'Goal: learn everyday ISL words with the 3D avatar and short practice sessions.',
       badge: 'Parent & Learner',
       color: 'peach'
     },
     {
       title: 'Educators & Inclusive Schools',
       role: 'Standardized ISL curriculum',
-      quote: '“The real-time pose feedback is a game changer for students. They get instant constructive corrections on hand shape and movement dynamics.”',
-      name: 'Dr. Rajesh Nair',
-      location: 'Special Education Lead, Kerala',
+      quote: 'Goal: give students feedback on hand shape while they practise (rule-based coach, 8 signs today).',
       badge: 'Educator',
       color: 'gold'
     }
@@ -52,7 +46,7 @@ export default function ImpactSection() {
           </p>
         </div>
 
-        {/* Personas & Real Voices */}
+        {/* Intended users (no user studies yet: these are goals, not testimonials) */}
         <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
           {personas.map((p, idx) => (
             <div
@@ -74,17 +68,13 @@ export default function ImpactSection() {
                   {p.role}
                 </div>
 
-                <p className="text-xs sm:text-sm text-mudra-indigo-700/90 italic leading-relaxed">
+                <p className="text-xs sm:text-sm text-mudra-indigo-700/90 leading-relaxed">
                   {p.quote}
                 </p>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-mudra-lavender-200/60 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-xs text-mudra-indigo-900">{p.name}</div>
-                  <div className="text-[11px] text-mudra-indigo-500">{p.location}</div>
-                </div>
-                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+              <div className="mt-6 pt-4 border-t border-mudra-lavender-200/60 text-[11px] text-mudra-indigo-500">
+                Intended use: not yet tested with users
               </div>
             </div>
           ))}

@@ -13,7 +13,10 @@ export function AccessibilityProvider({ children }) {
   const [fontSize, setFontSize] = useState(() => {
     return localStorage.getItem('mudra_font_size') || 'normal' // 'normal', 'large', 'xlarge'
   })
-  const [speechRate, setSpeechRate] = useState(1.0)
+  const [speechRate, setSpeechRate] = useState(() => {
+    const saved = parseFloat(localStorage.getItem('mudra_speech_rate'))
+    return Number.isFinite(saved) && saved > 0 ? saved : 1.0
+  })
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
@@ -33,6 +36,10 @@ export function AccessibilityProvider({ children }) {
       document.documentElement.classList.remove('reduced-motion')
     }
   }, [reducedMotion])
+
+  useEffect(() => {
+    localStorage.setItem('mudra_speech_rate', String(speechRate))
+  }, [speechRate])
 
   useEffect(() => {
     localStorage.setItem('mudra_font_size', fontSize)

@@ -49,10 +49,10 @@ export default function ContinuousLoop({ onNavigate }) {
       id: 'improve',
       num: '04',
       title: 'IMPROVE',
-      subtitle: 'Adaptive Spaced Repetition',
+      subtitle: 'Track Your Practice',
       icon: TrendingUp,
-      desc: 'MUDRA dynamically tracks signs you struggle with (like THANK YOU or SORRY) and schedules focused mini-drills.',
-      previewTag: 'Personalized Retention',
+      desc: 'The Progress page keeps your practice sessions and similarity scores on this device so you can see which signs need more work.',
+      previewTag: 'Practice History',
       color: 'gold',
       actionRoute: 'progress'
     },
@@ -205,7 +205,7 @@ export default function ContinuousLoop({ onNavigate }) {
                       <div className="space-y-3 pt-1">
                         <div className="p-3 rounded-xl bg-mudra-indigo-800/80 border border-mudra-indigo-700 text-xs space-y-1">
                           <div className="text-mudra-lavender-300 font-semibold">Landmark Mesh Tracking</div>
-                          <div className="text-mudra-indigo-200">21 Hand Keypoints Active • Palm Angle: 42° • Confidence: 94%</div>
+                          <div className="text-mudra-indigo-200">21 hand keypoints per hand, tracked in the browser</div>
                         </div>
                         <div className="text-[11px] text-mudra-indigo-300 flex items-center gap-2">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
@@ -217,11 +217,11 @@ export default function ContinuousLoop({ onNavigate }) {
                     {activeStep.id === 'feedback' && (
                       <div className="space-y-2 pt-1">
                         <div className="flex justify-between text-xs font-mono">
-                          <span className="text-emerald-300">✓ Hand Shape: 94%</span>
-                          <span className="text-emerald-300">✓ Spatial Position: 92%</span>
+                          <span className="text-emerald-300">✓ Hand shape score</span>
+                          <span className="text-emerald-300">✓ Position score</span>
                         </div>
                         <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs">
-                          ⚠ Coach Tip: "Raise your palm 2cm higher towards the lower lip for authentic ISL articulation."
+                          Example tip: "Raise your hand a little higher."
                         </div>
                       </div>
                     )}
@@ -229,12 +229,12 @@ export default function ContinuousLoop({ onNavigate }) {
                     {activeStep.id === 'improve' && (
                       <div className="space-y-3 pt-1">
                         <div className="p-3 rounded-xl bg-mudra-indigo-800/80 border border-mudra-indigo-700 text-xs space-y-1">
-                          <div className="text-mudra-peach-300 font-semibold">Adaptive Diagnostic: THANK YOU</div>
-                          <div className="text-mudra-indigo-200">Initial: 61% accuracy &rarr; Target Drill &rarr; Retest: 88% mastery</div>
+                          <div className="text-mudra-peach-300 font-semibold">Practice history</div>
+                          <div className="text-mudra-indigo-200">Each session's similarity score is saved on this device</div>
                         </div>
                         <div className="text-[11px] text-mudra-indigo-300 flex items-center gap-2">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Automated spaced repetition algorithm</span>
+                          <span>Stored locally, nothing uploaded</span>
                         </div>
                       </div>
                     )}
@@ -243,7 +243,7 @@ export default function ContinuousLoop({ onNavigate }) {
                       <div className="space-y-3 pt-1">
                         <div className="p-3 rounded-xl bg-mudra-indigo-800/80 border border-mudra-indigo-700 text-xs space-y-1">
                           <div className="text-mudra-lavender-300 font-semibold">Spontaneous Real-Time Pipeline</div>
-                          <div className="text-mudra-indigo-200">Gesture Stream &rarr; Token Smoothing &rarr; Natural Speech (24ms)</div>
+                          <div className="text-mudra-indigo-200">Sign &rarr; recognised word &rarr; sentence &rarr; speech</div>
                         </div>
                         <div className="text-[11px] text-mudra-indigo-300 flex items-center gap-2">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />

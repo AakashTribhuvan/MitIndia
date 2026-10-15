@@ -29,6 +29,9 @@ class AugmentConfig:
     segment_config: str = "training/configs/streaming.json"  # segmenter settings used for the crop
     segment_jitter_s: float = 0.15
     closeup_prob: float = 0.0  # view the clip through a simulated close-up webcam (datasets/camera.py)
+    desk_share: float = 0.0  # share of close-up views in which the hands rest in view (camera.desk_view)
+    low_fps_prob: float = 0.0  # probability of seeing the clip at a low camera frame rate (camera.low_fps_view)
+    low_fps_range: tuple[float, float] = (5.0, 15.0)
 
     @classmethod
     def from_dict(cls, values: dict | None) -> AugmentConfig:

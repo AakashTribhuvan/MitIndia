@@ -29,7 +29,7 @@ def _optional_float(name: str) -> float | None:
 @dataclass
 class Settings:
     model_dir: Path = field(
-        default_factory=lambda: Path(os.getenv("MUDRA_MODEL_DIR", BACKEND_DIR / "models" / "isl_mudra_combined_v6_bilstm"))
+        default_factory=lambda: Path(os.getenv("MUDRA_MODEL_DIR", BACKEND_DIR / "models" / "isl_mudra_combined_v8_desk_bilstm"))
     )
     device: str = field(default_factory=lambda: os.getenv("MUDRA_DEVICE", "cpu"))
     cors_origins: list[str] = field(default_factory=_origins)
@@ -40,6 +40,11 @@ class Settings:
     # One line per finished live sign (decision summary only), for diagnosing live use
     events_log: Path = field(
         default_factory=lambda: Path(os.getenv("MUDRA_EVENTS_LOG", BACKEND_DIR.parents[1] / "experiments" / "logs" / "stream_events.jsonl"))
+    )
+    # Opt-in: save each live /stream session (landmarks + client diagnostics, no video) here as .npz,
+    # to replay a real session offline (training/scripts/replay_session.py). Unset = nothing is saved.
+    session_dir: Path | None = field(
+        default_factory=lambda: Path(os.environ["MUDRA_SESSION_DIR"]) if os.getenv("MUDRA_SESSION_DIR") else None
     )
     # Training split whose clips are shown as "how to sign it" examples
     reference_split: Path = field(

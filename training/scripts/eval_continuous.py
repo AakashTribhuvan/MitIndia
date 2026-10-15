@@ -27,7 +27,7 @@ import numpy as np
 from mudra_ml import schema
 from mudra_ml.config import project_path
 from mudra_ml.data.manifest import read_manifest
-from mudra_ml.datasets.camera import CloseupParams, closeup_view
+from mudra_ml.datasets.camera import CloseupParams, DeskParams, closeup_view, desk_view
 from mudra_ml.datasets.distractors import synth_fidget
 from mudra_ml.preprocessing.sequence import LandmarkSequence, load_sequence
 from mudra_ml.streaming import Frame, ModelBundle, SegmenterConfig, StreamingRecognizer
@@ -70,9 +70,10 @@ def rest_in_view_frame(s, rng):
     return hands, present, pose, True
 
 
-def build_streams(rows, classes, fps, signs_per_stream=8, seed=0, fidgets=True, closeup=False, rest_in_view=False):
+def build_streams(rows, classes, fps, signs_per_stream=8, seed=0, fidgets=True, closeup=False, rest_in_view=False, desk=False):
     """closeup: every stream is seen through one simulated close-up webcam (datasets/camera.py).
-    rest_in_view: between signs the hands rest still in view instead of dropping out of the frame."""
+    rest_in_view: between signs the hands rest still in view instead of dropping out of the frame.
+    desk: close-up, and the hands rest in view between signs (camera.desk_view; the live failure of 2026-10-07/12)."""
     rng = np.random.default_rng(seed)
     rows = [r for r in rows if r.label in classes]
     order = rng.permutation(len(rows))
@@ -80,7 +81,8 @@ def build_streams(rows, classes, fps, signs_per_stream=8, seed=0, fidgets=True, 
     for k in range(0, len(order), signs_per_stream):
         hands, present, pose, pose_p, truth, idle = [], [], [], [], [], []
         prev, prev_seq = None, None
-        cam = CloseupParams.sample(rng) if closeup else None
+        cam = CloseupParams.sample(rng) if closeup or desk else None
+        desk_rest = (DeskParams.sample(rng), {}) if desk else None
         for j, idx in enumerate(order[k : k + signs_per_stream]):
             r = rows[idx]
             s = load_sequence(Path(r.landmarks_path))
@@ -88,6 +90,8 @@ def build_streams(rows, classes, fps, signs_per_stream=8, seed=0, fidgets=True, 
                 s = closeup_view(s, cam)
                 if s is None:
                     continue
+            if desk_rest is not None:
+                s = desk_view(s, desk_rest[0], rng, desk_rest[1])
             if prev is not None:  # smooth transition: interpolate last frame of previous clip -> first frame of this one
                 n = int(rng.uniform(0.3, 1.0) * fps)
                 if rest_in_view and j % 3 != 0:  # short pause with the hands held still in view
@@ -142,6 +146,7 @@ def subsample(st, src_fps, cap):
     return out, src_fps * len(idx) / len(st["hands"])
 
 
+REASONS: defaultdict = defaultdict(int)  # why segments ended (rest / still / max_length), for the report
 AUTO_ADD = None  # set by --auto-add: also commit an unsure sign's best guess at this confidence (the app's policy)
 
 
@@ -152,6 +157,7 @@ def run_segmenter(bundle, cfg, st, fps):
         ev = rec.push(Frame(i / fps, st["hands"][i], st["present"][i], st["pose"][i], bool(st["pose_present"][i])))
         if not ev or ev.get("event") != "sign_ended":
             continue
+        REASONS[ev.get("stats", {}).get("reason", "none")] += 1
         res = ev["result"]
         if res["status"] == "ok":
             words.append((ev["t0"], ev["t1"], i / fps, res["sign"]))
@@ -222,7 +228,7 @@ def objective(m):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--model", default="app/backend/models/isl_mudra_combined_v6_bilstm")
+    ap.add_argument("--model", default="app/backend/models/isl_mudra_combined_v8_desk_bilstm")
     ap.add_argument("--split", required=True)
     ap.add_argument("--tune", action="store_true")
     ap.add_argument("--tune-threshold-only", action="store_true", help="keep saved segmenter settings, tune only the threshold")
@@ -231,13 +237,20 @@ def main() -> None:
     ap.add_argument("--out", default=None)
     ap.add_argument("--closeup", action="store_true", help="view every stream through a simulated close-up webcam")
     ap.add_argument("--scenarios", default=None,
-                    help="comma list of normal, closeup, closeup_rest (close-up + hands resting in view); "
+                    help="comma list of normal, closeup, closeup_rest (close-up + hands resting in view), "
+                         "desk (close-up + hands never leave the frame); "
                          "tuning optimises the mean over all of them")
     ap.add_argument("--fps-cap", type=float, default=None, help="simulate a camera delivering at most this many frames/s")
+    ap.add_argument("--grid", default=None, help='JSON segmenter grid for --tune, e.g. {"still_s": [0.5, 0.8]}')
+    ap.add_argument("--set", default=None, help='JSON settings applied on top of the saved ones, e.g. {"still_s": 0.6}')
+    ap.add_argument("--no-baseline", action="store_true", help="skip the old rolling-window baseline")
     ap.add_argument("--auto-add", type=float, default=None, help="score the app's auto-add of unsure signs at this confidence")
     args = ap.parse_args()
     global AUTO_ADD
     AUTO_ADD = args.auto_add
+    if (args.tune or args.tune_threshold_only) and "test" in Path(args.split).stem.lower():
+        # settings chosen here are written to the live config (and used for training crops): never from test
+        ap.error("--tune on a test split is not allowed; tune on the validation split")
     scenarios = (args.scenarios.split(",") if args.scenarios else ["closeup" if args.closeup else "normal"])
 
     bundle = ModelBundle(project_path(args.model))
@@ -249,17 +262,21 @@ def main() -> None:
     for src, rs in by_src.items():
         fps = float(load_sequence(Path(rs[0].landmarks_path)).meta.get("fps") or 0) or args.default_fps
         for sc in scenarios:
-            sts = build_streams(rs, set(bundle.classes), fps, closeup=sc.startswith("closeup"), rest_in_view=sc == "closeup_rest")
+            sts = build_streams(rs, set(bundle.classes), fps, closeup=sc.startswith("closeup"),
+                                rest_in_view=sc == "closeup_rest", desk=sc == "desk")
             capped = [subsample(st, fps, args.fps_cap) for st in sts]
             name = src if len(scenarios) == 1 else f"{src}/{sc}"
             data[name] = (capped[0][1] if capped else fps, [c[0] for c in capped])
 
     cfg_path = project_path(args.config_out) if args.config_out else CFG_PATH
     cfg = SegmenterConfig.load(cfg_path if cfg_path.exists() else CFG_PATH)
+    if args.set:
+        cfg = SegmenterConfig(**{**cfg.to_dict(), **json.loads(args.set)})
     if args.tune_threshold_only:
         args.tune = True
     if args.tune:
-        grid = {} if args.tune_threshold_only else {"raise_y": [0.5, 0.75, 1.0], "speed": [2.0, 3.0, 4.0], "on_s": [0.05, 0.1], "off_s": [0.3, 0.4, 0.5]}
+        grid = ({} if args.tune_threshold_only else json.loads(args.grid) if args.grid else
+                {"raise_y": [0.5, 0.75, 1.0], "speed": [2.0, 3.0, 4.0], "on_s": [0.05, 0.1], "off_s": [0.3, 0.4, 0.5]})
         best = (None, cfg) if not grid else None
         for vals in (itertools.product(*grid.values()) if grid else []):
             trial = SegmenterConfig(**{**cfg.to_dict(), **dict(zip(grid, vals))})
@@ -283,13 +300,20 @@ def main() -> None:
 
     report = {"model": bundle.name, "segmenter": cfg.to_dict(), "results": {}}
     for src, (fps, sts) in data.items():
-        for name, outs in (("baseline", [run_baseline(bundle, st, fps) for st in sts]),
-                           ("segment", [run_segmenter(bundle, cfg, st, fps) for st in sts])):
-            m = score(sts, outs)
+        for name, run in (("baseline", lambda st, fps=fps: run_baseline(bundle, st, fps)),
+                          ("segment", lambda st, fps=fps: run_segmenter(bundle, cfg, st, fps))):
+            if name == "baseline" and args.no_baseline:
+                continue
+            REASONS.clear()
+            m = score(sts, [run(st) for st in sts])
+            if name == "segment":
+                total = max(sum(REASONS.values()), 1)
+                m["end_reasons"] = {k: round(v / total, 3) for k, v in sorted(REASONS.items())}
             report["results"][f"{src}/{name}"] = m
             d = f"{m['median_delay_s']:.2f}s" if m["median_delay_s"] is not None else "-"
             print(f"{src:22s} {name:8s} signs {m['signs']:4d} | correct {m['correct']:6.1%} wrong {m['wrong']:5.1%} "
-                  f"missed {m['missed']:5.1%} | extra/sign {m['extra_per_sign']:.3f} idle false/min {m['idle_false_per_min']:.2f} | delay {d}")
+                  f"missed {m['missed']:5.1%} | extra/sign {m['extra_per_sign']:.3f} idle false/min {m['idle_false_per_min']:.2f} | delay {d}"
+                  + (f" | ends {m['end_reasons']}" if "end_reasons" in m else ""))
     if args.out:
         Path(project_path(args.out)).write_text(json.dumps(report, indent=2), encoding="utf-8")
 

@@ -9,22 +9,28 @@ Only body and hand landmark coordinates leave the browser, never camera images.
 **Taking over the project (people or AI models): read [`HANDOVER.md`](HANDOVER.md) first.** It is
 updated at every push and documents the architecture, interfaces, data, models and open problems.
 
-## Status (12 Oct 2026)
+## Status (13 Oct 2026)
 
 | Area | State |
 |---|---|
 | Web app (Home, Learn, Practice, Communicate, Progress, Record) | Working; avatar demonstrates 26 letters and 13 words |
-| Recognition model | `isl_mudra_combined_v6_bilstm`: 314 words + "no sign", trained on corrected labels |
+| Recognition model | `isl_mudra_combined_v8_desk_bilstm`: 314 words + "no sign"; also trained with hands resting in view and low camera frame rates (the numbers below are for the previous model, v6; v8 is in HANDOVER Section 14) |
 | Live recognition (Communicate) | Sign start/end detection, automatic word adding, spoken sentence, "How to sign it" examples |
 | New words from the Record page | Work immediately (few-shot), stored for retraining |
 | Data pipeline | MediaPipe landmarks, leakage-safe splits, label audit |
 | Known gap | Live use on a laptop webcam is not yet reliable: the browser tracks at ~6 fps on some machines and the model has seen few signers (66.7% on unseen recording sessions) |
+| Honest reading of the numbers | Test clips come from the same signers and sessions as training clips, so the 97-99% figures below are "new takes by known signers". Accuracy for new people has not been measured. See the audit: [`docs/AUDIT_2026-10-13.md`](docs/AUDIT_2026-10-13.md) |
 
 ## Results
 
 Live-use benchmark: held-out signs joined into continuous streams with transitions and idle
 movement, delivered at 12 frames/s like a laptop webcam. Settings were chosen on validation
-streams; these are held-out test numbers, with the corrected labels (see Data quality).
+streams; these are held-out test numbers, with the corrected labels (see Data quality). The test
+clips share signers and recording sessions with training (90% of INCLUDE test clips have a same-word
+training take 1-2 files away; every team-word test clip a take within 2 minutes), and the streams are
+simulated, so these are upper bounds for new users. Only `ok` words are scored; the app also adds
+unsure guesses (50-70%), which on the same streams changes correct words by 0 to +1.7 points and wrong
+words by -0.5 to +0.9 points.
 
 | Source | Framing | Correct | Wrong | Missed |
 |---|---|---|---|---|
@@ -48,15 +54,20 @@ sign. 20 clips (both the video and the pose-release copy) were relabelled; the e
 are in `HANDOVER.md` Section 12 (local copy: `data/metadata/splits/combined_words_v3/label_fixes.json`). No video is filed under two
 words, and the pose-release and video copies of every clip agree (median correlation 0.96).
 
-Clip-level accuracy (complete pre-cut clips, corrected labels):
-- INCLUDE original videos re-extracted with MediaPipe: 99.0%; team words 99.4%.
-- INCLUDE 263 words, pose release: 97.4%. Published references: 85.6% (original paper),
-  93.5% (OpenHands SL-GCN), 97.7% (HWGAT).
-- Team words, on a recording day held out from training: 98.0%.
+Clip-level accuracy (complete pre-cut clips, corrected labels; same signers and sessions as training):
+- INCLUDE original videos re-extracted with MediaPipe: 99.0%; team words 99.4% (new takes recorded
+  minutes after training takes of the same word).
+- INCLUDE 263 words, pose release: 97.4%. Published references on the same official split: 85.6%
+  (original paper), 93.5% (OpenHands SL-GCN), 97.7% (HWGAT).
+- All 997 test recordings counted once (the INCLUDE video and pose copies of a recording are one
+  recording): 97.6%. The often-quoted 98.2% counts 498 recordings twice.
+- Team words, on a recording day held out from training: 98.0% (99 clips of 20 words, earlier
+  combined model; probably the same people on another day).
 - Earlier rule-based / Random-Forest system: about 44%.
 
 New words from recordings (few-shot, no retraining): tested on 25 team words the model never saw,
-from k recorded examples each (held-out test clips, averaged over 5 draws).
+from k recorded examples each (held-out test clips, averaged over 5 draws). The test clips were
+recorded in the same sessions as the examples (within 2 minutes), so these are same-session numbers.
 
 | Examples per word | Recognised | Wrong word | Missed | Known words taken over |
 |---|---|---|---|---|
@@ -73,8 +84,8 @@ recordings is the real fix, so recordings are stored in the training format.
 
 | Unseen sessions | Clip accuracy | Top-5 | Streams: correct | Streams: wrong |
 |---|---|---|---|---|
-| INCLUDE real video (529 clips) | 66.7% (96.5% when sessions are mixed) | 91.3% | 48.4% | 9.5% |
-| Team words, held-out recording day (181 clips) | 96.7% | 100% | 91.2% | 0% |
+| INCLUDE real video (529 clips) | 66.7% (96.5% when sessions are mixed); pose-release copies 66.8% | 91.3% | 48.4% | 9.5% |
+| Team words (181 clips; **not** held out by day: same signers and sessions as training) | 96.7% | 100% | 91.2% | 0% |
 
 Every held-out word had been trained on only 2-4 sessions, and accuracy follows that count
 (64% with 2, 69% with 3-4, 92% with 5+). Mirror, stronger geometric augmentation and pose

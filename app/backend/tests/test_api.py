@@ -18,7 +18,7 @@ from mudra_api.settings import Settings
 from mudra_ml.config import PROJECT_ROOT
 from mudra_ml.preprocessing.sequence import load_sequence
 
-MODEL_DIR = BACKEND / "models" / "isl_mudra_combined_v6_bilstm"
+MODEL_DIR = BACKEND / "models" / "isl_mudra_combined_v8_desk_bilstm"
 TEST_SPLIT = PROJECT_ROOT / "data" / "metadata" / "splits" / "include" / "test.csv"
 
 pytestmark = pytest.mark.skipif(not (MODEL_DIR / "model.pt").exists(), reason="exported model not present")
@@ -105,7 +105,7 @@ def test_missing_model_gives_clear_503(tmp_path):
     assert r.status_code == 503 and "export_model.py" in r.json()["detail"]
 
 
-COMBINED_DIR = BACKEND / "models" / "isl_mudra_combined_v6_bilstm"
+COMBINED_DIR = BACKEND / "models" / "isl_mudra_combined_v8_desk_bilstm"
 COMBINED_TEST = PROJECT_ROOT / "data" / "metadata" / "splits" / "combined_words_v3" / "test.csv"
 
 
@@ -186,6 +186,61 @@ def test_segmenter_states():
             events.append((ev, round(t, 2), None if segment is None else segment.hand_present.shape[0]))
     assert [e[0] for e in events] == ["sign_started", "sign_ended"]
     assert 1.0 <= events[0][1] <= 1.2 and events[1][1] <= 2.3
+
+
+def test_segmenter_parked_hands_end_a_sign_and_need_movement_to_start():
+    """Hands resting in view (a desk in front of a close webcam) always count as raised; with
+    ``still_s`` they end the sign once still, and only movement starts the next one."""
+    from mudra_ml.streaming import Frame, SegmenterConfig, SignSegmenter
+
+    cfg = SegmenterConfig(on_s=0.05, off_s=0.3, min_sign_s=0.2, pad_pre_s=0, pad_post_s=0, max_sign_s=6.0,
+                          still_s=0.5, still_speed=0.5, still_below_y=0.0)
+    pose = np.zeros((33, 4), np.float32)
+    pose[11], pose[12] = [0.6, 0.5, 0, 1], [0.4, 0.5, 0, 1]
+    rng = np.random.default_rng(0)
+
+    def hand_at(x, y):
+        h = np.zeros((2, 21, 3), np.float32)
+        h[1, :, :2] = [x, y]
+        h[1, :, :2] += rng.normal(0, 0.002, (21, 2))  # tracking jitter
+        return h
+
+    for still_s in (0.0, 0.5):
+        seg = SignSegmenter(SegmenterConfig(**{**cfg.to_dict(), "still_s": still_s}), 640, 480)
+        events = []
+        for i in range(150):  # 5 s at 30 fps: rest in view, a 1 s movement, rest in view again
+            t = i / 30
+            moving = 30 <= i < 60
+            x = 0.5 + 0.1 * np.sin((i - 30) / 30 * 2 * np.pi) if moving else 0.5
+            ev, _ = seg.push(Frame(t, hand_at(x, 0.65 if not moving else 0.55), np.array([False, True]), pose, True))
+            if ev:
+                events.append((ev, round(t, 2)))
+        if still_s == 0:  # without parking the resting hands keep the first sign open (6 s cap)
+            assert [e[0] for e in events] == ["sign_started"], events
+    # with parking: hands appearing at rest give at most one ignored too_short; the movement is one
+    # sign that ends on stillness; resting afterwards starts nothing (tracking jitter is not movement)
+    names = [e[0] for e in events]
+    assert names in (["sign_started", "too_short", "sign_started", "sign_ended"], ["sign_started", "sign_ended"]), events
+    assert 0.9 <= events[-2][1] <= 1.2 and events[-1][1] <= 3.2 and seg.last_end["reason"] == "still"
+
+
+def test_live_session_is_saved_only_when_enabled(tmp_path):
+    from mudra_ml.preprocessing.sequence import load_sequence
+
+    hand = [[0.5, 0.4, 0.0]] * 21
+    pose = [[0.5, 0.5, 0.0, 1.0]] * 33
+    for enabled in (False, True):
+        out = tmp_path / ("on" if enabled else "off")
+        c = TestClient(create_app(Settings(model_dir=MODEL_DIR, device="cpu", session_dir=out if enabled else None)))
+        with c.websocket_connect("/stream") as ws:
+            ws.send_json({"type": "start", "width": 640, "height": 480})
+            ws.send_json({"type": "diag", "camera_fps": 7, "tracking_fps": 7, "inference_ms": 30, "delegate": "GPU"})
+            for i in range(40):
+                ws.send_json({"type": "frame", "t": i / 10, "hands": [{"landmarks": hand, "score": 0.9}], "pose": pose})
+        saved = sorted(out.glob("session_*.npz")) if out.exists() else []
+        assert len(saved) == (1 if enabled else 0)
+    seq = load_sequence(saved[0])
+    assert seq.num_frames == 40 and seq.meta["client"]["camera_fps"] == 7 and seq.meta["width"] == 640
 
 
 @pytest.mark.skipif(not (COMBINED_DIR / "model.pt").exists() or not COMBINED_TEST.exists(), reason="combined model/data absent")

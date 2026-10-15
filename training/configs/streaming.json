@@ -12,5 +12,8 @@
   "margin": 0.0,
   "tta": 1,
   "cooldown_s": 1.0,
-  "provisional_s": 0.5
+  "provisional_s": 0.5,
+  "still_s": 0.6,
+  "still_speed": 0.5,
+  "still_below_y": 0.0
 }
