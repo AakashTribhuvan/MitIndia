@@ -1,7 +1,8 @@
 # MUDRA: Indian Sign Language Learning & Real-Time Communication
 
-**The web app is now branded SignLine** (2026-10-16): demo sign-in with User and Admin workspaces, Game Mode
-lessons, a word library and an admin overview. Sign-in is a demo with no real accounts; see `HANDOVER.md` Section 5.2.
+**The web app is branded SignLine** (2026-10-16): demo sign-in with User and Admin workspaces, Game Mode
+lessons, a sign library (words, fingerspelling letters, phrases), an emergency-help assistant and an admin overview.
+Sign-in is a demo with no real accounts; see `HANDOVER.md` Section 5.2. Code and packages keep the name MUDRA.
 
 MUDRA turns Indian Sign Language (ISL) into text and speech from an ordinary webcam, and turns
 text or speech into ISL with a 3D avatar. It combines a React web app, a FastAPI recognition
@@ -12,14 +13,14 @@ Only body and hand landmark coordinates leave the browser, never camera images.
 **Taking over the project (people or AI models): read [`HANDOVER.md`](HANDOVER.md) first.** It is
 updated at every push and documents the architecture, interfaces, data, models and open problems.
 
-## Status (13 Oct 2026)
+## Status (16 Oct 2026)
 
 | Area | State |
 |---|---|
-| Web app (Home, Learn, Practice, Communicate, Progress, Record) | Working; avatar demonstrates 26 letters and 13 words |
+| Web app (Home, Communication, Learning, Game Mode, Progress, Teach a sign, Settings; Admin pages) | Working; avatar demonstrates 26 letters and 13 words; installable on phones (web app manifest) |
 | Recognition model | `isl_mudra_combined_v8_desk_bilstm`: 314 words + "no sign"; also trained with hands resting in view and low camera frame rates (the numbers below are for the previous model, v6; v8 is in HANDOVER Section 14) |
-| Live recognition (Communicate) | Sign start/end detection, automatic word adding, spoken sentence, "How to sign it" examples |
-| New words from the Record page | Work immediately (few-shot), stored for retraining |
+| Live recognition (Communication) | *Words*: sign start/end detection, automatic word adding, spoken sentence, "How to sign it" examples; *Spell* and *Phrase* modes (below) |
+| New words from the Teach a sign page | Work immediately (few-shot), stored for retraining |
 | Data pipeline | MediaPipe landmarks, leakage-safe splits, label audit |
 | Fingerspelling letters A-Z and 99 phrases | New (from the team's alphabet photos and sentence videos): letters 70.9% / phrases 58.3% first guess on held-out data (phrases are always chosen by the user from the top guesses); in Learning, Game Mode and Communication (*Spell* / *Phrase*). Not yet measured on a live webcam. See [`docs/SIGN_LIBRARY.md`](docs/SIGN_LIBRARY.md) |
 | Emergency help (SOS circle, bottom-right) | Prototype in demo mode: explain an emergency with buttons, signs or a personal gesture, check and correct what SignLine understood, confirm, share with an in-app demo responder desk. Contacts no one; signs are simulated because the model does not know most emergency signs. In a real emergency in India, call 112. See [`docs/SIGNLINE_EMERGENCY.md`](docs/SIGNLINE_EMERGENCY.md) |
@@ -128,13 +129,15 @@ UI: Signing... / "Looks like X" <---- (3-cut smoothing, threshold,           upp
 ## Quick start (Windows)
 
 1. Run `start_all.bat`. It creates the Python environment, installs dependencies and starts both servers.
-2. Open http://localhost:3000, then **Communicate -> Start Camera**.
-3. Sign one word from start to finish, then lower your hands. The word is added when the sign ends.
-4. To teach it a new word, open **Record**, enter your name, pick or type the word and record it
-   5 times. The word works in Communicate straight away and is saved for the next training run.
+2. Open http://localhost:3000, choose the demo user, then **Communication -> Start Camera Stream**.
+3. *Words*: sign one word from start to finish, then lower your hands. The word is added when the sign ends.
+   *Spell*: hold each letter still for about a second. *Phrase*: sign one phrase, then pick it from the top guesses.
+4. To teach it a new word, open **Teach a sign**, enter your name, pick or type the word and record it
+   5 times. The word works in Communication straight away and is saved for the next training run.
+5. **SOS** (bottom-right, every page) opens the demo emergency assistant; it contacts no one.
 
 Backend: http://localhost:8000 (`/docs`, `/health`, `/labels`, `/predict`, `/recordings`,
-`/reference/{sign}`, WebSocket `/stream`). If port 8000 is taken, start the backend with
+`/reference/{sign}`, `/library`, `/letters/predict`, `/phrases/predict`, WebSocket `/stream`). If port 8000 is taken, start the backend with
 `MUDRA_PORT=8010` and set `VITE_API_URL=http://localhost:8010` in `app/frontend/.env`.
 Emergency API: `/api/v1/emergency/...`; responder desk at http://localhost:3000/responder (user `demo.responder`, password in `app/backend/var/demo_responder_credentials.txt` after the first start, or set `SIGNLINE_EM_DEMO_RESPONDER_PASSWORD`).
 Requires Python 3.12+ (tested on 3.14) and Node 20+. An NVIDIA GPU is optional (training only).
@@ -148,9 +151,11 @@ app/
   frontend/            React + Vite + Tailwind + Three.js app (pages, 3D avatar, MediaPipe tracker,
                        signRecognizer WebSocket client)
   backend/
-    mudra_api/         FastAPI service: /predict, /stream, /recordings, /reference, model loading
-    models/            the deployed model (model.pt + model_card.json: classes, metrics, threshold, licences)
-    tests/             API, streaming and recording tests
+    mudra_api/         FastAPI service: /predict, /stream, /recordings, /reference, /library, /letters, /phrases
+    signline_emergency/  emergency assistant (rules, questions, state machine, responder API, migrations)
+    models/            word model (v8), letter model, phrase model (model files + model_card.json: classes, metrics,
+                       threshold, licences)
+    tests/             API, streaming, recording, sign-library and emergency tests
 training/
   src/mudra_ml/        landmark extraction, normalisation, datasets, models, training, evaluation,
                        streaming (segmenter + recogniser)
@@ -160,6 +165,10 @@ training/
   tests/               unit and end-to-end tests
 data/                  README only: datasets, manifests and splits are kept locally (see data/README.md)
 docs/
+  SIGN_LIBRARY.md      fingerspelling letters and phrases: data, method, results, limits, rebuild
+  SIGNLINE_EMERGENCY.md emergency assistant: behaviour, honesty rules, API, configuration, limits
+  AUDIT_2026-10-13.md  audit of results and claims
+  blueprints/          versioned development plans
   MUDRA_MASTER_PLAN.md full analysis, dataset research, roadmap and dated progress log
   architecture.md      system architecture
   planning/            original project review documents
@@ -180,26 +189,31 @@ python training/scripts/eval_continuous.py --model app/backend/models/<model> \
 ```
 
 `mudra_words.yaml` reproduces the deployed model (about 45 minutes on an RTX 5060).
-Tests: `pytest training app/backend/tests` (61).
+Letters and phrases are rebuilt with the steps in `docs/SIGN_LIBRARY.md`.
+Tests: `pytest training app/backend/tests` (104) and `npm test` in `app/frontend` (15).
 
 ## Data and licences
 
 - **INCLUDE** (Sridhar et al., ACM MM 2020): pose release via AI4Bharat OpenHands and the original videos (Zenodo), CC-BY-4.0.
-- **Team ISL recordings** (61 words, 101 sentences): provided by the MUDRA team. Source and
-  licence to be confirmed before any public release.
+- **Team ISL recordings** (61 words, 101 sentences, 12,637 alphabet photos): provided by the MUDRA team; the
+  sentences feed the phrase model and the photos the letter model. Source and licence to be confirmed before any
+  public release (the sentence videos may be ISL-CSLTR, CC-BY-4.0).
 - Raw videos and extracted landmarks are not committed; see `data/README.md` for the layout.
 
 ## Roadmap
 
 Done: sign start/end detection, smoothing and commit rules, close-up webcam robustness, in-app
-recording and few-shot new words, session-independent test, INCLUDE label audit and fixes.
+recording and few-shot new words, session-independent test, INCLUDE label audit and fixes, SignLine redesign
+with Game Mode, fingerspelling letters and phrases, the emergency-help prototype.
 
-Next:
-- live webcam use: find why some browsers track at ~6 fps; collect the users' own recordings of
-  known words to see why their signs are rejected
-- more signers per word (FDMSE-ISL: 2,002 words, 20 signers, access by email; teammates recording in the app)
-- retrain with app recordings once each new word has 5 or more
-- the app's own words (Namaste, Water, Help, Yes, No, Goodbye, Home, Person) need recordings
+Next, in order (details: `HANDOVER.md` Section 16):
+1. a live webcam test of words, letters and phrases, with session saving so failures can be replayed
+2. more signers: teammates recording on *Teach a sign* (emergency words first), then a v9 model and real
+   recognition in the emergency assistant; request FDMSE-ISL, CISLR and iSign
+3. a test set of people kept out of training, to measure accuracy for new people
+4. more phrase videos and webcam-quality letter clips
+5. real accounts, review by Deaf ISL users or an ISL teacher, confirmed data licences
+6. HTTPS hosting, in-browser inference, CI for the tests
 
 Tried and not adopted (measured, see the progress log): velocity features, ending a sign when the
 hands are held still, a zoomed hand search during extraction, hand gap filling, pose dropout,

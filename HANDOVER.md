@@ -6,9 +6,9 @@
 
 | Field | Value |
 |---|---|
-| Document version | 7 |
+| Document version | 8 |
 | Last updated | 2026-10-16 (system date; the previous entry was dated 10-17 although its commit b5e2da8 is of 2026-10-16) |
-| Last updated at commit | the SignLine Emergency + sign library commit of 2026-10-16 (Section 21) |
+| Last updated at commit | docs update after `08dd74f` (Section 21) |
 | Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
 | Tests | 104 backend passing (`pytest training app/backend/tests`: 69 + 6 sign library + 29 SignLine Emergency; data-dependent tests skip without `data/metadata`) + 15 frontend (`npm test` in `app/frontend`) |
@@ -51,6 +51,8 @@
 1. Read Sections 1, 2 and 16 to know what works, what does not and what is next, and the current
    blueprint (`docs/blueprints/`, now v1.1) for the target and the milestone being worked on.
 2. Read Sections 4-10 before touching runtime code, and 11-13 before touching training or claims.
+   Feature documents: `docs/SIGN_LIBRARY.md` (letters, phrases), `docs/SIGNLINE_EMERGENCY.md` (SOS assistant).
+   The recommended next steps are at the top of Section 16.
 3. Never report a metric that is not in this document or produced by a script in this repo
    (Section 19). Numbers here are **held-out test** numbers unless labelled otherwise.
 4. File paths are relative to the repository root. Code is the authority: if this document and
@@ -97,6 +99,13 @@ Before every `git push`, the person or model pushing must:
   with locally stored practice history.
 - **Recording** (Record): users record signs (landmarks only) to teach new words and to collect
   training data with signer names.
+- **Fingerspelling and phrases** (2026-10-16): letters A-Z and 99 phrases in Learning, Game Mode and
+  Communication (*Spell* / *Phrase* modes); see `docs/SIGN_LIBRARY.md`.
+- **Emergency help** (2026-10-16): an SOS circle on every page opens a demo emergency-communication
+  assistant that contacts no one; see `docs/SIGNLINE_EMERGENCY.md`.
+
+The web app is branded **SignLine** (Section 5.2). Code, packages and the repository keep the name MUDRA
+(`mudra_api`, `mudra_ml`); only user-facing text says SignLine.
 
 **Primary goal (current):** reliable real-time recognition in actual use: detect when a sign starts
 and ends, never commit a word from one or two frames, recognise the signs the model was trained on,
@@ -823,6 +832,24 @@ v8 is deployed; v6 is kept beside it for rollback until v8 is confirmed live (`5
 
 ## 16. Known issues and open problems
 
+### Recommended next steps (2026-10-16, in order)
+
+1. **Live webcam test** (needs the owner, ~15 min): sign ~20 known words plus a few letters and phrases on
+   Communication, writing down what was signed, with `MUDRA_SESSION_DIR` set (signer consent); replay with
+   `training/scripts/replay_session.py` to see whether frame rate, framing or the model fails (items 1, 1b, 12).
+2. **More signers**: 4-5 teammates record on *Teach a sign*, 5+ takes per word, starting with the emergency words
+   the model lacks (HELP, CHEST, PAIN, BREATHING, FIRE, SMOKE, ACCIDENT, UNSAFE, FOLLOWING …); then train v9 and
+   switch the Emergency feature to the real recogniser (`docs/SIGNLINE_EMERGENCY.md`, "Connecting the real model").
+   Request FDMSE-ISL (email), CISLR (form), iSign (Hugging Face).
+3. **Measure new people**: keep 2-3 people entirely out of training and record them as the test set (item 1c).
+4. **Letters and phrases**: 10-15 videos per phrase from several people; webcam-quality letter clips for I, H, J, M.
+5. **Product**: real accounts (item 1f), review by Deaf ISL users or an ISL teacher, confirm data licences (item 7),
+   fill the legal pages.
+6. **Engineering**: HTTPS hosting (phones allow the camera only over HTTPS), in-browser inference (ONNX), CI for
+   the tests, remove the unused old landing files (item 1f, waiting for the owner).
+
+### Open problems
+
 Priority order. Each item says what is known and what to do next.
 
 1. **Live recognition fails on the developer's webcam** (critical). Stream log 2026-10-07: 11 signs,
@@ -965,9 +992,17 @@ that need the model or landmark data skip automatically when those files are mis
 - **Model changes:** a new model must be compared with the deployed one on the same validation and
   test streams (`eval_continuous.py`, normal + close-up, 12 fps) before it is deployed; record the
   numbers in Sections 13-14 and the change log.
-- **Code style:** Python 3.11+ typing, `ruff` (line length 110), docstrings explain *why*; React
+- **Code style:** Python 3.11+ typing, `ruff` (line length 110; run it from `app/backend` for backend code), docstrings explain *why*; React
   function components with hooks; Tailwind classes; no new dependencies without need.
 - **Commits:** imperative subject line; body explains what and why with measured effects.
+- **Data never committed:** `data/processed/`, `data/metadata/` (manifests, splits, letter grouping inputs) and
+  `app/backend/var/` (emergency database, generated demo password) stay local; models, code, configs and docs are committed.
+- **Emergency feature:** never contact real emergency services, send real messages, or fabricate locations,
+  delivery receipts or accuracy; keep demo labels; secrets only in environment variables; no report content in
+  logs or analytics; role checks on the server.
+- **Letters and phrases:** keep near-duplicate photos / videos in one split (colour groups, byte-identical
+  dedupe); phrases are offered as top guesses for the user to choose until a live test shows they can be automatic.
+- **Commits and pushes** only when the owner asks; push to remote `mudra` (`Addy-coder786/Mudra`), branch `main`.
 - **This document:** update at every push (Section 0).
 
 ---
@@ -996,7 +1031,12 @@ that need the model or landmark data skip automatically when those files are mis
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
 
-### 2026-10-16 · Sign library: fingerspelling letters and phrases
+### 2026-10-16 · docs: README, AGENTS.md, CLAUDE.md, HANDOVER brought up to date
+- Owner's request after `08dd74f`. HANDOVER: product summary (Section 1), feature-document pointers (Section 0),
+  recommended next steps at the top of Section 16, new rules in Section 19. README: status, quick start, layout,
+  tests, data, roadmap. AGENTS.md / CLAUDE.md: SignLine naming, emergency and data rules, test commands. No code change.
+
+### 2026-10-16 · `08dd74f` · Sign library: fingerspelling letters and phrases
 - Owner's request: use the data already on the device to add more to the library, usable in Learning, Game Mode
   and Communication. Everything word-level was already in the 314 words, so: (1) letters from the alphabet photos,
   (2) whole phrases from the sentence videos.
@@ -1011,7 +1051,7 @@ Add one entry per push: date · commits · what changed · why · measured effec
 - Measured: backend 104 tests pass, frontend 15; pages checked in screenshots. Not measured on a live webcam.
 - Docs: `docs/SIGN_LIBRARY.md`; HANDOVER sections 2, 3, 6.1, 6.3, 12, 13, 14, 15, 16, 17, 18.
 
-### 2026-10-16 · SignLine Emergency Communication Assistant
+### 2026-10-16 · `08dd74f` · SignLine Emergency Communication Assistant
 - Owner's request: add the Emergency Communication Assistant (master prompt, renamed MUDRA → SignLine) for web
   and mobile, without changing the existing project, reachable from a circle at the bottom-right. The
   "dummy login" instruction covers user sign-in; responders got a real login because the prompt requires
