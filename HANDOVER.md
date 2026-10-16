@@ -6,12 +6,12 @@
 
 | Field | Value |
 |---|---|
-| Document version | 4 |
-| Last updated | 2026-10-15 |
-| Last updated at commit | the commit after `v0.9.0` that adds the v1.0 blueprint (see Section 21) |
+| Document version | 5 |
+| Last updated | 2026-10-17 |
+| Last updated at commit | the SignLine commit of 2026-10-17 (see Section 21) |
 | Deployed model | `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`) |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
-| Tests | 66 passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) |
+| Tests | 69 backend passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) + 12 frontend (`npm test` in `app/frontend`) |
 | Repository | `https://github.com/Addy-coder786/Mudra` (remote `mudra`); older pushes: `Addy-coder786/ISL_Addy` (remote `origin`) |
 | Overall state | Recognition is accurate on new takes by **signers seen in training**; accuracy for new people is unmeasured (about 67% on unseen recording sessions); **live use on a real laptop webcam is not yet reliable** (Section 16). Audit: `docs/AUDIT_2026-10-13.md` |
 
@@ -49,7 +49,7 @@
 ### For an AI model or engineer taking over
 
 1. Read Sections 1, 2 and 16 to know what works, what does not and what is next, and the current
-   blueprint (`docs/blueprints/`, now v1.0) for the target and the milestone being worked on.
+   blueprint (`docs/blueprints/`, now v1.1) for the target and the milestone being worked on.
 2. Read Sections 4-10 before touching runtime code, and 11-13 before touching training or claims.
 3. Never report a metric that is not in this document or produced by a script in this repo
    (Section 19). Numbers here are **held-out test** numbers unless labelled otherwise.
@@ -123,7 +123,9 @@ build a sentence and speak it.
 
 | Area | State | Evidence |
 |---|---|---|
-| Web app (Home, Communicate, Learn, Practice, Progress, Record) | Working | builds with `vite build`; pages load |
+| Web app, rebranded **SignLine** (Section 5.2) | Working | demo sign-in with User / Admin roles; User: Home, Communication, Learning, Game Mode, Progress, Teach a sign, Settings; Admin: Overview, Users, Content, Records, Reports, Game rules, Settings; checked in desktop and mobile screenshots |
+| Accounts and roles | **Demo only** | no server accounts or passwords; role kept in the browser; anyone can open Admin (Section 16) |
+| Game Mode | Working (local) | 70 lessons over the 314 words, real recorded examples, quizzes, XP / streak / badges in localStorage; no leaderboard (needs accounts) |
 | Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13), **same signers and sessions as training** |
 | Continuous-stream recognition (simulated live use) | Working in benchmark | 90-98% correct, 0-2.2% wrong on held-out streams |
 | Close-up laptop-webcam framing | Handled in benchmark | 90.0-90.6% correct (simulated close-up) |
@@ -165,11 +167,20 @@ build a sentence and speak it.
 │       ├── public/wasm/        MediaPipe Tasks Vision WASM runtime (served locally)
 │       ├── public/ybot.glb     avatar model; public/assets/mudra-intro.mp4 intro video
 │       └── src/
-│           ├── App.jsx, main.jsx, index.css    tab-based routing (no URL router)
-│           ├── pages/          HomePage, CommunicatePage, LearnPage, PracticePage, ProgressPage, RecordPage
-│           ├── components/     Navbar, Footer, IntroLoader, AccessibilityModal, SignReference,
-│           │                   avatar/MudraAvatarViewer, home/* (8 landing-page sections)
-│           ├── context/AccessibilityContext.jsx   high contrast, reduced motion, font size, speech rate
+│           ├── App.jsx, main.jsx, index.css    react-router routes, role guards, start-up loader (Section 5.2)
+│           ├── layouts/Shell.jsx               sidebar (desktop) / top bar + bottom nav (mobile), shared by User and Admin
+│           ├── pages/          CommunicatePage, PracticePage, RecordPage, LearnPage (avatar studio), ProgressPage
+│           │                   (practice history), SettingsPage, ComingSoonPage; auth/ (Welcome, SignIn, Register);
+│           │                   user/ (UserHomePage, LearningPage, ProgressHubPage); game/ (GamePage, GameLessonPage);
+│           │                   admin/ (AdminOverviewPage, AdminPages: Users, Content, Records, Reports, Game rules);
+│           │                   legal/LegalPage (7 drafts). HomePage + components/home/* = old landing page, unused
+│           ├── features/       game/ (curriculum.js generated from the model's words, progress.js rules + storage,
+│           │                   quiz.js, useGameProgress.js, __tests__), vocabulary.js (/labels cache)
+│           ├── components/     brand/ (Logo, AppLoader, Doodles), ui/ (Button, Card, StatusPill), AccessibilityModal,
+│           │                   SignReference (also `bare` player for quizzes), avatar/MudraAvatarViewer;
+│           │                   Navbar, Footer, IntroLoader, home/* are no longer used
+│           ├── context/        AccessibilityContext.jsx (contrast, motion, text size, speech rate);
+│           │                   SessionContext.jsx (DEMO sign-in: role + name in localStorage)
 │           ├── avatar/         useAvatarRenderer.js + Animations/ (26 Alphabets, 13 Words, defaultPose)
 │           └── services/
 │               ├── handTracker.js          MediaPipe HandLandmarker + PoseLandmarker on the webcam
@@ -293,6 +304,53 @@ training and the benchmarks use, so offline results describe the live code path 
 10. **Logging.** The backend appends one JSON line per finished sign (decision summary only, never
     landmarks) to `experiments/logs/stream_events.jsonl` (`MUDRA_EVENTS_LOG`).
 
+### 5.2 SignLine web app (2026-10-16)
+
+The frontend was rebranded and restructured as **SignLine** (logo: `public/brand/signline-logo-original.png`,
+supplied by the owner; `signline-mark.png` = the same image with only its pale background made transparent).
+Tokens: `tailwind.config.js` `sl` palette (brand **light green** `#A8E063` with dark text on it, `#3D7314` for green
+text; owner's choice 2026-10-16, replacing the logo-sampled orange; the logo file itself stays orange), cream, ink,
+purple (admin), sun yellow (completed / badges), sky, pink), offset black shadows (`shadow-sl`), `rounded-sl`; the legacy `mudra` palette and shared classes
+(`glass-card`, `btn-primary`, …) are remapped to SignLine tones so older pages match without code changes.
+
+| Route | Page | Data |
+|---|---|---|
+| `/welcome`, `/signin?role=user\|admin`, `/register` | demo sign-in (`SessionContext`) | browser only; registering creates a learner, never an admin |
+| `/app/home` | dashboard: continue learning, streak, XP, level, daily goal, recent lessons, next badge, Communication entry, avatar | Game Mode progress (localStorage), `/labels`, avatar |
+| `/app/communication` | unchanged `CommunicatePage` (live recognition, Voice → Avatar) | `/stream`, `/labels`, `/reference` |
+| `/app/learning` | word library (314 words, search, topic filter, real example via `/reference`) + avatar studio tab | `/labels`, `/reference` |
+| `/app/game`, `/app/game/lesson/:id` | path of 70 lessons (beginner / intermediate / advanced), learn steps + quizzes ("which word is this sign?", "does it mean X?", review), feedback, recap, badges | `/reference`; progress `signline_progress_v1:<name>` |
+| `/app/progress` | XP per day (14 days), lessons per section, badges + old practice history | localStorage |
+| `/app/record`, `/app/practice`, `/app/settings` | Teach a sign, rule-based coach, accessibility + data reset | `/recordings`; localStorage |
+| `/admin` | system status | `/health`, `/model`, `/recordings` |
+| `/admin/users` | demo profiles with progress **in this browser** | localStorage |
+| `/admin/content` | vocabulary table, lesson counts, avatar lexicon (read-only) | `/labels` |
+| `/admin/records` | recordings (with confirmed delete) + recognition log with filters, date range, pagination | `/recordings`, `/events` |
+| `/admin/reports` | detections per day, decision breakdown, most added words, tracking fps | `/events` |
+| `/admin/game`, `/admin/settings` | Game Mode rules and tips (read-only); settings | code |
+| `/legal/:doc` | terms, privacy, accessibility, cookies, data-rights, licences, contact: **drafts**, owner input marked `[…]` | – |
+
+**Camera practice** (`components/practice/SignPracticeCamera.jsx`, `features/practice/handFeatures.js`): in Game
+Mode learn steps ("Practise with camera" switch) and in the Learning library ("Practise with camera"). It shows
+the mirrored camera with the learner's skeleton and a live evaluation against the word's recorded example: hand
+detected, finger shape & spread, hand height & position (relative to the shoulders), palm direction, each 0-100%
+at the example's closest *signing* moment (its rest frames are ignored; a resting learner sees "Hands at rest").
+Check on held-out clips (5 greetings, `include_video` test split): the attempt scores highest against its own
+word in 4 of 5 (THANK_YOU did not). Guidance only, never XP. "Check my sign" streams to `/stream` and reports
+what the model recognised and whether the lesson word is in its top 3, labelled as possibly wrong for new signers.
+
+Game Mode rules (`features/game/progress.js`): 10 XP per right answer, 20 XP bonus on a lesson's first pass,
+pass = 60% right (unlocks the next lesson), daily goal 50 XP, level every 150 XP, streak = consecutive days with
+XP, 9 badges from real results. Quizzes never grade the learner's own signing (the model is not validated for that).
+Lesson tips are general sign-language facts and SignLine advice; review them with an ISL signer before publishing.
+
+The start-up loader (`components/brand/AppLoader.jsx`) shows a Deaf signer and a hearing person joined by a dashed
+"bridge" that draws itself, a dot travelling along it, "Meaning connected / Your meaning finds a voice", voice bars
+and a speech bubble (illustration). It waits for fonts and a first `/health` contact (capped at 2.5 s) and, at the owner's request, shows the intro
+for 6 s on every load (`INTRO_MS` in App.jsx; 1.5 s still picture with reduced motion). "Skip intro" ends it at
+once. It has a retry state. All new states use text + symbol (`StatusPill`: Live / Demo / Not
+available / Coming soon / Error), never colour alone.
+
 ### 5.1 Client-side checks on Communicate
 
 | Check | Rule | Message |
@@ -315,6 +373,7 @@ training and the benchmarks use, so offline results describe the live code path 
 | `GET /model` | model card minus stats/classes | card fields + `num_signs`, `active_threshold` |
 | `GET /reference/{sign}` | one real training example | `sign`, `label`, `fps` (≤15), `width`, `height`, `frames[]`: `hands` [2 × (21×[x,y,z]) or null], `pose` (33×[x,y,z,vis] or null); 404 if none |
 | `POST /predict` | classify one pre-cut clip | request `PredictRequest`: `frames` (8-256) of `{hands:[{landmarks 21×3, handedness?, score}], pose: 33×3|4 or null}`, `width`, `height`, `mirrored`, `top_k` (1-10). Response: `status` (`ok`/`uncertain`/`no_hands`/`no_sign`), `sign`, `label`, `confidence`, `top_k[]`, `hand_rate`, `frames_received`, `threshold`, `model`, `inference_ms`. `no_hands` when < `MUDRA_MIN_HAND_RATE` (0.3) of frames show a hand; uses the model card threshold (0.85) |
+| `GET /events?limit=500` | latest lines of the live decision log, newest first (admin Records / Reports) | `total`, `events[]` (as written by `log_sign` / `client_diag`; never landmarks); limit 1-5000 |
 | `GET /recordings` | recording summary | `total`, `signs[]` (`sign`, `label`, `recordings`, `rejected`, `signers`, `in_model`, `custom_active`, `items[]`), `custom_words[]` |
 | `POST /recordings` | save one recorded sign | request `{label, signer, width, height, frames[] (1-1200, same frame format as /stream with t)}`; response `sample_id`, `label`, `label_readable`, `signer`, `duration_s`, `any_hand_rate`, `quality_flag` (`""`, `too_short`, `low_hand_detection`, `no_pose`), `label_count`, `custom_active`, `in_model`; 422 on invalid input |
 | `DELETE /recordings/{sample_id}` | delete one recording | `{deleted}`; 404 if unknown |
@@ -472,6 +531,8 @@ input [B, 24, 162]
 | `still_window_s` | 0.25 | span over which stillness speed is measured (so tracking jitter does not grow with fps); "moving" uses wrist speed over ≥ 0.1 s |
 | `still_below_y` | 0.0 | parking only applies to hands below the shoulder line |
 | `still_keep_s` | 0.0 (off) | a sign ended by stillness keeps this much of the still part. Validation, 10 fps, 0.4 s: normal 93.2 → 94.5%, close-up 90.3 → 91.1%, desk 73.9 → 74.6% correct (wrong +0.3 on desk); not confirmed on test, not enabled |
+| `join_short_s` | 0.5 | a piece shorter than this that ends by stillness is held back (`too_short`, reason `fragment`); if movement resumes within `join_gap_s`, the next sign starts from the piece's start. Validation, 10 fps: within ±0.6 points; fixed the split COMPUTER takes |
+| `join_gap_s` | 1.0 | how soon movement must resume to join a held-back piece |
 
 **Activity** (`SignSegmenter._activity`): a frame is active if any visible hand is raised or moving.
 If shoulders have never been seen, any visible hand counts as active. **States:** `idle` →
@@ -740,6 +801,16 @@ Priority order. Each item says what is known and what to do next.
    desk misses are back-to-back signs merged into one segment. Next: a live test, ideally with
    `MUDRA_SESSION_DIR` set (needs the signer's consent) and `training/scripts/replay_session.py`.
    Rollback: `MUDRA_MODEL_DIR=app/backend/models/isl_mudra_combined_v6_bilstm` and `still_s` 0.
+1f. **SignLine is a demo product, not secure** (2026-10-16). Sign-in has no accounts or passwords and the Admin area
+   is open to anyone who picks it; `/events` and `DELETE /recordings` have no authentication. Run it only on a
+   trusted machine. Real accounts need a server-side user store and role checks. Leaderboards, user management,
+   content editing and editable game rules wait for that. Legal pages are unapproved drafts with `[…]` owner input;
+   fonts load from Google Fonts. Avatar fixed 2026-10-17 (owner's request): in development React mounts twice and a
+   model loaded by the discarded mount became `ctx.avatar`, so animations moved an invisible copy and the visible
+   avatar stayed in a T-pose; each load now checks its own `disposed` flag. The camera now frames the model from
+   its real size (head to below the hips plus signing space, re-fitted on resize); badge renamed "SignLine avatar". Unused old files: `HomePage.jsx`, `components/home/*`, `Navbar`, `Footer`, `IntroLoader`,
+   `public/assets/mudra-intro.mp4` (remove after the owner agrees). Only the screens were checked in screenshots;
+   no screen-reader or full WCAG audit has been done.
 1c. **Accuracy for new people is unmeasured** (audit 2026-10-13). No dataset has signer IDs and the
    test split shares signers and sessions with training. Record several people on the Record page
    and keep one or two entirely out of training as the test set.
@@ -801,7 +872,10 @@ files in `training/assets/mediapipe/` from
 
 ## 18. Tests
 
-`pytest training app/backend/tests` → 66 passed (56 test functions, some parametrised), ~45 s.
+`pytest training app/backend/tests` → 69 passed (59 test functions, some parametrised), ~25 s.
+`npm test` (Vitest) in `app/frontend` → 12 passed (5 for camera practice: hand slots, similarity, rest detection;
+7 for Game Mode): curriculum covers the 314 words once, lesson unlocking, XP and
+first-pass bonus, streak, badges, quiz answers are among the options, words without examples are skipped.
 
 | File | Covers |
 |---|---|
@@ -860,6 +934,25 @@ that need the model or landmark data skip automatically when those files are mis
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-17 · SignLine redesign, M1/M2 live fixes, camera practice, avatar fix (work of 2026-10-15 to 10-17)
+- Look and feel since the first redesign: light green brand theme (owner's choice; logo file unchanged), start-up
+  intro (Deaf signer ↔ hearing person bridge, 6 s, Skip), tagline "Learn with your hands, Connect with your heart.".
+- Camera practice in Game Mode and Learning (Section 5.2): live comparison with the word's example (4 of 5 held-out
+  greetings scored highest against their own word) and "Check my sign" via the model. 5 new frontend tests.
+- 3D avatar fixed (Section 16, item 1f): T-pose caused by a discarded double mount receiving the animations; camera
+  now framed from the model's size.
+- **SignLine web app** (Section 5.2): brand tokens and logo, start-up loader, demo sign-in with User / Admin
+  workspaces (react-router), new Home, Learning library, Game Mode (70 lessons, local XP / streak / badges),
+  Progress, Settings, Admin overview / users / content / records / reports / game rules, legal drafts. Model,
+  `/stream`, segmenter and avatar unchanged. New `GET /events`. Vitest added (7 tests).
+- **M1:** camera picker and resolution, clear camera errors (denied / missing / in use), black and frozen feed
+  warnings, browser diagnostics in the events log once a minute.
+- **M2:** personal examples for known words (3+ good recordings; the user's COMPUTER differs from the dataset
+  version: similarity 0.43-0.47 to dataset clips, 0.85-0.89 among the user's takes); fragment joining
+  (`join_short_s` 0.5). Offline on the user's 5 COMPUTER takes: 0/5 → 4/5; validation streams within ±0.6 points.
+  **Live (2026-10-15 23:39): COMPUTER added from the personal examples (similarity 0.68)**, first live success;
+  tracking varied 3-22 fps between sessions.
 
 ### 2026-10-15 · blueprint v1.0 (docs only)
 - Added `docs/blueprints/MUDRA_DEVELOPMENT_BLUEPRINT_v1.0.md` (draft, pending review) and its index

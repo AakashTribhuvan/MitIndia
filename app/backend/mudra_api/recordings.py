@@ -72,6 +72,10 @@ def signer_key(name: str) -> str:
     return normalize_label(name).lower() or "anonymous"
 
 
+# A word the model already knows gets the signer's own examples once it has this many good recordings
+PERSONAL_MIN_EXAMPLES = 3
+
+
 class RecordingStore:
     """Thread-safe store of app recordings plus the custom-word bank built from them."""
 
@@ -95,13 +99,17 @@ class RecordingStore:
         return self._embeddings[row.sample_id]
 
     def rebuild_bank(self) -> None:
+        """Custom-word bank: new words from their first good recording; words the model already knows
+        once they have PERSONAL_MIN_EXAMPLES good recordings (the signer's own variant, e.g. a COMPUTER
+        the model does not recognise: audit of 2026-10-15)."""
         if self.bundle is None:
             return
         examples: dict[str, list[np.ndarray]] = {}
         for r in self.rows:
-            if r.label not in self.known and not r.quality_flag and Path(r.landmarks_path).exists():
+            if not r.quality_flag and Path(r.landmarks_path).exists():
                 examples.setdefault(r.label, []).append(self._embedding(r))
-        self.bank.set_examples({k: np.stack(v) for k, v in examples.items()})
+        active = {k: np.stack(v) for k, v in examples.items() if k not in self.known or len(v) >= PERSONAL_MIN_EXAMPLES}
+        self.bank.set_examples(active)
 
     # -- recordings ---------------------------------------------------------------------------
     def add(self, label: str, signer: str, frames: list[Frame], width: int, height: int) -> dict:
@@ -135,7 +143,7 @@ class RecordingStore:
         with self._lock:
             self.rows.append(row)
             write_manifest(self.rows, self.manifest_path)
-            if label not in self.known and not flag:
+            if not flag:
                 self.rebuild_bank()
         return {**self._public(row), "label_count": self.count(label)}
 

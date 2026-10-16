@@ -45,6 +45,11 @@ class SegmenterConfig:
     still_window_s: float = 0.25  # speed for stillness is measured over this span, so tracking jitter does not grow with fps
     still_below_y: float = -10.0  # parking only applies to hands lower than this (shoulder widths below the shoulder line)
     still_keep_s: float = 0.0  # a sign ended by stillness keeps this much of the still part (a held final handshape)
+    # Fragment joining: a piece shorter than this that ends by stillness is held back (reported as
+    # too_short); if movement starts again within join_gap_s, the next sign starts from the piece's
+    # start, so a sign with a pause is classified whole. 0 = off.
+    join_short_s: float = 0.0
+    join_gap_s: float = 1.0
 
     @classmethod
     def load(cls, path: Path | None) -> SegmenterConfig:
@@ -83,6 +88,7 @@ class SignSegmenter:
         self.point_hist: list[deque] = [deque(), deque()]  # (t, points) per hand over the last still_window_s
         self.still_since: float | None = None  # all visible hands still (and low enough) since then
         self.parked = False
+        self.pending: tuple[float, float] | None = None  # (start, end) of a held-back short piece
 
     def _activity(self, f: Frame) -> bool:
         if f.pose_present:
@@ -158,7 +164,11 @@ class SignSegmenter:
 
         if self.state == "idle":
             if self.active_since is not None and f.t - self.active_since >= cfg.on_s:
-                self.state, self.sign_start = "signing", self.active_since
+                start = self.active_since
+                if self.pending is not None and start - self.pending[1] <= cfg.join_gap_s:
+                    start = self.pending[0]  # continue the held-back piece: one sign with a pause
+                self.pending = None
+                self.state, self.sign_start = "signing", start
                 return "sign_started", None
             return None, None
 
@@ -173,6 +183,10 @@ class SignSegmenter:
         self.state, self.sign_start, self.active_since = "idle", None, None
         reason = ("still" if self.parked else "rest") if ended else "max_length"
         self.last_end = {"reason": reason, "duration_s": round(end - start, 3)}
+        if reason == "still" and cfg.join_short_s > 0 and end - start < cfg.join_short_s:
+            self.pending = (start, end)
+            self.last_end = {"reason": "fragment", "duration_s": round(end - start, 3)}
+            return "too_short", None
         if end - start < cfg.min_sign_s:
             return "too_short", None
         self.last_bounds = (start - cfg.pad_pre_s, end + cfg.pad_post_s)

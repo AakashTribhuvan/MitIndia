@@ -78,6 +78,9 @@ export function useAvatarRenderer({
     isMountedRef.current = true
     const hostElement = containerRef.current
     if (!hostElement) return
+    // This run's own lifetime. React may mount twice in development: a model loaded by a discarded run must
+    // not become ctx.avatar (animations would then move an avatar that is never drawn: frozen T-pose).
+    let disposed = false
 
     const ctx = contextRef.current
     ctx.flag = false
@@ -126,6 +129,21 @@ export function useAvatarRenderer({
     camera.lookAt(0, 1.28, 0)
     ctx.camera = camera
 
+    // Fit the camera to the loaded model: head (with margin) down to the waist, plus the signing space
+    // beside the body, for any container shape. Re-run on resize.
+    const frameAvatar = () => {
+      const f = ctx.framing
+      if (!f) return
+      const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+      const aspect = camera.aspect || 1
+      const distV = (f.height / 2) / tanHalf
+      const distH = f.halfWidth / (tanHalf * aspect)
+      const dist = Math.max(distV, distH)
+      camera.position.set(0, f.centerY, f.centerZ + dist)
+      camera.lookAt(0, f.centerY, f.centerZ)
+      camera.updateProjectionMatrix()
+    }
+
     // 4. WebGL Renderer
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -155,6 +173,7 @@ export function useAvatarRenderer({
           ctx.camera.aspect = width / height
           ctx.camera.updateProjectionMatrix()
           ctx.renderer.setSize(width, height)
+          frameAvatar()
         }
       }
     })
@@ -195,7 +214,7 @@ export function useAvatarRenderer({
     loader.load(
       modelPath,
       (gltf) => {
-        if (!isMountedRef.current) return
+        if (disposed || !isMountedRef.current) return
 
         try {
           // Process meshes and REMOVE SIH BRANDING
@@ -231,6 +250,22 @@ export function useAvatarRenderer({
           ctx.avatar = gltf.scene
           scene.add(ctx.avatar)
 
+          // Framing from the model's real size (T-pose bounding box and hip height)
+          ctx.avatar.updateMatrixWorld(true)
+          const box = new THREE.Box3().setFromObject(ctx.avatar)
+          const size = box.getSize(new THREE.Vector3())
+          const hips = ctx.avatar.getObjectByName('mixamorig:Hips') || ctx.avatar.getObjectByName('mixamorigHips')
+          const hipsY = hips ? hips.getWorldPosition(new THREE.Vector3()).y : box.min.y + size.y * 0.53
+          const top = box.max.y + size.y * 0.03
+          const bottom = hipsY - size.y * 0.12 // resting hands sit around the hips
+          ctx.framing = {
+            centerY: (top + bottom) / 2,
+            centerZ: (box.min.z + box.max.z) / 2,
+            height: top - bottom,
+            halfWidth: size.y * 0.3 // hands reach about this far to the side while signing
+          }
+          frameAvatar()
+
           // Build bone name lookup table
           const boneMap = {}
           ctx.avatar.traverse((obj) => {
@@ -257,6 +292,7 @@ export function useAvatarRenderer({
       },
       undefined,
       (err) => {
+        if (disposed) return
         console.error('3D Avatar: Failed to load model from:', modelPath, err)
         if (isMountedRef.current) {
           onLoadingChangeRef.current?.(false)
@@ -268,7 +304,7 @@ export function useAvatarRenderer({
     // 8. Continuous Unified Render & Animation Loop
     let animLoopId = null
     const unifiedRenderLoop = () => {
-      if (!isMountedRef.current) return
+      if (disposed || !isMountedRef.current) return
       animLoopId = requestAnimationFrame(unifiedRenderLoop)
 
       if (ctx.avatar && ctx.animations.length > 0 && !ctx.flag) {
@@ -353,6 +389,7 @@ export function useAvatarRenderer({
 
     // 9. Cleanup
     return () => {
+      disposed = true
       isMountedRef.current = false
       resizeObserver.disconnect()
 
@@ -384,6 +421,8 @@ export function useAvatarRenderer({
       ctx.camera = null
       ctx.renderer = null
       ctx.avatar = null
+      ctx.framing = null
+      ctx.animations = []
       boneTransitionsRef.current.clear()
     }
   }, [containerRef, modelPath])

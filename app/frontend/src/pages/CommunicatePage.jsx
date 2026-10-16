@@ -18,7 +18,7 @@ import {
   Send,
   ArrowRightLeft
 } from 'lucide-react'
-import handTracker from '../services/handTracker'
+import handTracker, { cameraErrorKind } from '../services/handTracker'
 import signRecognizer, { API_BASE_URL } from '../services/signRecognizer'
 import faceExpressionTracker from '../services/faceExpressionTracker'
 import { classifyISLSign } from '../services/islClassifier'
@@ -32,6 +32,19 @@ const AUTO_SPEAK_PAUSE_MS = 2500
 // An unsure sign still adds its best guess at this confidence or more (below it the sign is dropped)
 const AUTO_ADD_MIN = 0.5
 const LOW_FPS = 15
+// Per-browser camera preferences (localStorage can be unavailable: then nothing is remembered)
+function readPref(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
+}
+function writePref(key, value) {
+  try { localStorage.setItem(key, String(value)) } catch { /* not remembered */ }
+}
+const CAMERA_ERRORS = {
+  denied: 'Camera permission was denied. Allow the camera for this site (the camera icon in the address bar), then try again.',
+  not_found: 'No camera was found. Connect or enable a webcam, then try again.',
+  in_use: 'The camera is in use by another app (Zoom, Teams, Camera…) or blocked by the system. Close that app, then try again.',
+  unknown: 'The camera could not be started. Check that it works in another app, then try again.'
+}
 // Signs islClassifier.js can detect (offline fallback)
 const RULE_SIGNS = ['HELLO', 'WATER', 'NAMASTE', 'THANK_YOU', 'YES', 'NO', 'PEACE', 'HELP']
 // Close-up framing: shoulders wider than this share of the frame, or lower than this height, leave no room for the hands
@@ -48,6 +61,10 @@ export default function CommunicatePage() {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraLoading, setCameraLoading] = useState(false)
   const [cameraError, setCameraError] = useState(null)
+  const [cameraIssue, setCameraIssue] = useState(null) // 'black' | 'frozen' while the camera runs
+  const [cameras, setCameras] = useState([])
+  const [cameraId, setCameraId] = useState(() => readPref('mudra_camera_id', ''))
+  const [cameraRes, setCameraRes] = useState(() => Number(readPref('mudra_camera_res', '480')) || 480)
   const [isPaused, setIsPaused] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -412,13 +429,21 @@ export default function CommunicatePage() {
     }
   }, [])
 
+  useEffect(() => {
+    handTracker.listCameras().then(setCameras).catch(() => setCameras([]))
+  }, [])
+
   const handleStartCamera = async () => {
     setCameraLoading(true)
     setCameraError(null)
+    setCameraIssue(null)
     try {
       if (videoRef.current) {
-        await handTracker.startCamera(videoRef.current, handleMediaPipeResults)
+        await handTracker.startCamera(videoRef.current, handleMediaPipeResults, {
+          deviceId: cameraId, resolution: cameraRes, onIssue: setCameraIssue
+        })
         setCameraActive(true)
+        handTracker.listCameras().then(setCameras).catch(() => {}) // labels appear once permission is granted
         try {
           await faceExpressionTracker.start(videoRef.current, handleFaceResults, handleFaceError)
         } catch (error) {
@@ -427,7 +452,7 @@ export default function CommunicatePage() {
       }
     } catch (err) {
       console.error('Camera startup failed:', err)
-      setCameraError('Camera access was denied or is unavailable. You can test with the verified sign selector chips below.')
+      setCameraError(CAMERA_ERRORS[cameraErrorKind(err)])
       setCameraActive(false)
     } finally {
       setCameraLoading(false)
@@ -436,6 +461,7 @@ export default function CommunicatePage() {
 
   const handleStopCamera = () => {
     handTracker.stopCamera()
+    setCameraIssue(null)
     signRecognizer.reset()
     lastModelSignRef.current = null
     faceExpressionTracker.stop()
@@ -565,7 +591,7 @@ export default function CommunicatePage() {
   }, [])
 
   return (
-    <div className="pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <div className="pt-6 lg:pt-10 pb-24 lg:pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
       <style>{`
         @media (max-width: 767px) {
           .communicate-camera-panel {
@@ -672,6 +698,35 @@ export default function CommunicatePage() {
                   <p className="text-xs leading-relaxed text-mudra-indigo-100 max-w-sm mb-5">
                     Turn on camera to track hand landmarks and recognize ISL signs in real time.
                   </p>
+                  {cameraError && (
+                    <p role="alert" className="mb-4 max-w-sm rounded-xl bg-rose-500/90 px-3 py-2 text-xs font-semibold text-white">
+                      {cameraError}
+                    </p>
+                  )}
+                  <div className="mb-4 flex flex-wrap items-center justify-center gap-2 text-xs">
+                    <label className="sr-only" htmlFor="camera-select">Camera</label>
+                    <select
+                      id="camera-select"
+                      value={cameraId}
+                      onChange={(e) => { setCameraId(e.target.value); writePref('mudra_camera_id', e.target.value) }}
+                      className="max-w-[14rem] rounded-xl bg-mudra-indigo-800 px-2 py-1.5 text-white border border-mudra-indigo-500"
+                    >
+                      <option value="">Default camera</option>
+                      {cameras.filter((c) => c.deviceId).map((c) => (
+                        <option key={c.deviceId} value={c.deviceId}>{c.label}</option>
+                      ))}
+                    </select>
+                    <label className="sr-only" htmlFor="camera-res">Resolution</label>
+                    <select
+                      id="camera-res"
+                      value={cameraRes}
+                      onChange={(e) => { setCameraRes(Number(e.target.value)); writePref('mudra_camera_res', e.target.value) }}
+                      className="rounded-xl bg-mudra-indigo-800 px-2 py-1.5 text-white border border-mudra-indigo-500"
+                    >
+                      <option value={480}>640×480 (faster)</option>
+                      <option value={720}>1280×720</option>
+                    </select>
+                  </div>
                   <button
                     type="button"
                     onClick={handleStartCamera}
@@ -684,7 +739,15 @@ export default function CommunicatePage() {
                 </div>
               )}
 
-              {cameraActive && !framing && trackerFps > 0 && trackerFps < LOW_FPS && (
+              {cameraActive && cameraIssue && (
+                <div role="alert" className="absolute top-14 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-md rounded-2xl bg-rose-500/95 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-lg">
+                  {cameraIssue === 'black'
+                    ? 'The camera picture is black. Check the lens cover or privacy shutter, or pick another camera.'
+                    : 'The camera stopped sending pictures. Stop and restart the camera, or close other apps using it.'}
+                </div>
+              )}
+
+              {cameraActive && !cameraIssue && !framing && trackerFps > 0 && trackerFps < LOW_FPS && (
                 <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-md rounded-2xl bg-amber-400/95 px-4 py-2.5 text-center text-sm font-semibold text-amber-950 shadow-lg">
                   {slowReason === 'camera'
                     ? `Your camera sends only ${trackerDiag.cameraFps} frames per second. Webcams slow down in dim light: add light in front of you.`

@@ -12,7 +12,7 @@ const HAND_COLOURS = ['#7c3aed', '#f97316'] // signer's left, right
  * Plays one real training example of a sign as a moving skeleton (landmarks only, no video),
  * mirrored like the user's own camera view so it can be copied directly.
  */
-export default function SignReference({ sign, testCorrect, testClips, onClose }) {
+export default function SignReference({ sign, testCorrect, testClips, onClose, bare = false, onAvailability }) {
   const canvasRef = useRef(null)
   const [clip, setClip] = useState(null)
   const [error, setError] = useState(null)
@@ -23,8 +23,8 @@ export default function SignReference({ sign, testCorrect, testClips, onClose })
     setError(null)
     fetch(`${API_BASE_URL}/reference/${encodeURIComponent(sign)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('No example available for this word'))))
-      .then((body) => !cancelled && setClip(body))
-      .catch((err) => !cancelled && setError(err.message))
+      .then((body) => { if (!cancelled) { setClip(body); onAvailability?.(true) } })
+      .catch((err) => { if (!cancelled) { setError(err.message); onAvailability?.(false) } })
     return () => {
       cancelled = true
     }
@@ -89,6 +89,16 @@ export default function SignReference({ sign, testCorrect, testClips, onClose })
     raf = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf)
   }, [clip])
+
+  if (bare) {
+    // Player only (quizzes: no word name, no caption)
+    return error ? (
+      <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{error}</p>
+    ) : (
+      <canvas ref={canvasRef} width={320} height={240} role="img" aria-label="Sign example (skeleton animation)"
+              className="w-full rounded-xl bg-sl-ink" />
+    )
+  }
 
   return (
     <div className="rounded-2xl border border-mudra-lavender-200 bg-white p-3 space-y-2">

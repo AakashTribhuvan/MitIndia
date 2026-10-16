@@ -52,6 +52,29 @@ async function createWithFallback(factory, vision, options) {
 
 const ema = (prev, value, k = 0.1) => (prev ? (1 - k) * prev + k * value : value)
 
+// Resolutions offered in the UI (the browser may negotiate another size; the video reports the real one)
+export const CAMERA_RESOLUTIONS = { 480: { width: 640, height: 480 }, 720: { width: 1280, height: 720 } }
+
+/** Why the camera could not start, from the getUserMedia error name. */
+export function cameraErrorKind(error) {
+  switch (error?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'denied'
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'not_found'
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'in_use'
+    default:
+      return 'unknown'
+  }
+}
+
+const BLACK_LUMA = 8 // mean brightness (0-255) below which a frame counts as black
+const FROZEN_S = 3 // no new video frame for this long = frozen feed
+
 class HandTrackerService {
   constructor() {
     this.handLandmarker = null
@@ -67,6 +90,23 @@ class HandTrackerService {
     this.delegate = null // 'GPU' or 'CPU' (CPU if either landmarker fell back)
     this.cameraFps = 0 // frames the camera delivers
     this.inferenceMs = 0 // hand + pose time per processed frame
+    this.healthTimer = null
+    this.onIssueCallback = null // called with 'black' | 'frozen' | null when the feed's health changes
+    this.issue = null
+  }
+
+  /** Video inputs ({deviceId, label}); labels are empty until camera permission has been granted. */
+  async listCameras() {
+    if (!navigator.mediaDevices?.enumerateDevices) return []
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    return devices.filter((d) => d.kind === 'videoinput').map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Camera ${i + 1}` }))
+  }
+
+  /** Label and size of the running camera, for diagnostics. */
+  cameraInfo() {
+    const track = this.stream?.getVideoTracks?.()[0]
+    const s = track?.getSettings?.() || {}
+    return { label: track?.label || '', width: s.width || 0, height: s.height || 0, frameRate: s.frameRate || 0 }
   }
 
   /**
@@ -108,18 +148,33 @@ class HandTrackerService {
   /**
    * Starts user webcam and landmark tracking
    */
-  async startCamera(videoElement, onResults) {
+  async startCamera(videoElement, onResults, { deviceId = '', resolution = 480, onIssue = null } = {}) {
     if (!videoElement) throw new Error('Video element is required')
 
     this.videoElement = videoElement
     this.onResultsCallback = onResults
+    this.onIssueCallback = onIssue
 
     await this.initialize()
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: 'user' },
-      audio: false
-    })
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const err = new Error('This browser cannot open a camera (needs a secure page: localhost or https).')
+      err.name = 'NotFoundError'
+      throw err
+    }
+    const size = CAMERA_RESOLUTIONS[resolution] || CAMERA_RESOLUTIONS[480]
+    const video = { width: { ideal: size.width }, height: { ideal: size.height }, frameRate: { ideal: 30 } }
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: deviceId ? { ...video, deviceId: { exact: deviceId } } : { ...video, facingMode: 'user' },
+        audio: false
+      })
+    } catch (error) {
+      if (!deviceId || error?.name !== 'OverconstrainedError') throw error
+      // the remembered camera is gone (unplugged / renamed): fall back to the default camera
+      stream = await navigator.mediaDevices.getUserMedia({ video: { ...video, facingMode: 'user' }, audio: false })
+    }
     this.stream = stream
     this.videoElement.srcObject = stream
     await this.videoElement.play()
@@ -127,8 +182,47 @@ class HandTrackerService {
     this.isTracking = true
     this.lastVideoTime = -1
     this._countCameraFrames()
+    this._watchHealth()
     this._processVideoLoop()
     return true
+  }
+
+  /**
+   * Checks the feed every second: a camera can deliver frames that are black (lens cover, privacy
+   * shutter, another app holding the sensor) or stop delivering frames at all (frozen driver).
+   */
+  _watchHealth() {
+    clearInterval(this.healthTimer)
+    const probe = document.createElement('canvas')
+    probe.width = 32
+    probe.height = 24
+    const ctx = probe.getContext('2d', { willReadFrequently: true })
+    let lastTime = -1
+    let lastChange = performance.now()
+    this.issue = null
+    this.healthTimer = setInterval(() => {
+      const video = this.videoElement
+      if (!this.isTracking || !video) return
+      const now = performance.now()
+      if (video.currentTime !== lastTime) {
+        lastTime = video.currentTime
+        lastChange = now
+      }
+      let issue = null
+      if (now - lastChange > FROZEN_S * 1000) {
+        issue = 'frozen'
+      } else if (ctx && video.readyState >= 2) {
+        ctx.drawImage(video, 0, 0, probe.width, probe.height)
+        const px = ctx.getImageData(0, 0, probe.width, probe.height).data
+        let sum = 0
+        for (let i = 0; i < px.length; i += 4) sum += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]
+        if (sum / (px.length / 4) < BLACK_LUMA) issue = 'black'
+      }
+      if (issue !== this.issue) {
+        this.issue = issue
+        this.onIssueCallback?.(issue)
+      }
+    }, 1000)
   }
 
   /**
@@ -191,7 +285,8 @@ class HandTrackerService {
             cameraFps: Math.round(this.cameraFps || 0),
             trackingFps: Math.round(this.fps || 0),
             inferenceMs: Math.round(this.inferenceMs || 0),
-            delegate: this.delegate
+            delegate: this.delegate,
+            camera: this.stream?.getVideoTracks?.()[0]?.label || ''
           }
         })
       } catch (err) {
@@ -207,6 +302,9 @@ class HandTrackerService {
    */
   stopCamera() {
     this.isTracking = false
+    clearInterval(this.healthTimer)
+    this.healthTimer = null
+    this.issue = null
     this.lastPose = null
     this.lastFrameAt = 0
     this.fps = 0

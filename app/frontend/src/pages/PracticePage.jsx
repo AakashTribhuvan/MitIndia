@@ -166,7 +166,7 @@ export default function PracticePage({ targetSignId = 'HELLO', onNavigate }) {
   }, [])
 
   return (
-    <div className="practice-page pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+    <div className="practice-page pt-6 lg:pt-10 pb-24 lg:pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
       <style>{`
         .practice-mobile-layout {
           position: relative;

@@ -110,7 +110,7 @@ export default function LearnPage({ onNavigate, onSelectPracticeSign }) {
   ]
 
   return (
-    <div className="pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+    <div className="pt-6 lg:pt-10 pb-24 lg:pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
       
       {/* Header with ISLRTC Reference Citation */}
       <div className="text-center max-w-3xl mx-auto space-y-3">

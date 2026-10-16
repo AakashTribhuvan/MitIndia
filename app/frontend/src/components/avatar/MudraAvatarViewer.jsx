@@ -69,7 +69,7 @@ export default function MudraAvatarViewer({
       <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between z-20 pointer-events-auto">
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-mudra-indigo-900/85 backdrop-blur-md border border-white/15 text-xs text-white shadow-xs">
           <Sparkles className="w-3.5 h-3.5 text-mudra-peach-300 animate-pulse" />
-          <span className="font-display font-bold tracking-wide">MUDRA AI GUIDE</span>
+          <span className="font-display font-bold tracking-wide">SignLine avatar</span>
         </div>
 
         <div className="flex items-center gap-1.5">

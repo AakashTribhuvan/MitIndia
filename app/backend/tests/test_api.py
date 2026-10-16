@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -266,10 +267,14 @@ def test_recordings_store_and_custom_words(tmp_path):
     req = clip_to_request(PROJECT_ROOT / rows[0]["landmarks_path"])
     known = c.post("/recordings", json={"label": rows[0]["label"], "width": req["width"], "height": req["height"],
                                         "frames": [{"t": k / 30, **fr} for k, fr in enumerate(req["frames"])]}).json()
-    assert known["in_model"] and not known["custom_active"]
+    assert known["in_model"] and not known["custom_active"]  # one take of a known word: not yet personal
+    for _ in range(2):  # 3 good takes of a known word: the signer's own examples become active
+        known = c.post("/recordings", json={"label": rows[0]["label"], "width": req["width"], "height": req["height"],
+                                            "frames": [{"t": k / 30, **fr} for k, fr in enumerate(req["frames"])]}).json()
+    assert known["in_model"] and known["custom_active"] and known["label_count"] == 3
     for sid in ids:
         assert c.delete(f"/recordings/{sid}").status_code == 200
-    assert c.get("/health").json()["custom_words"] == 0
+    assert c.get("/health").json()["custom_words"] == 1  # the known word's personal examples remain
     assert c.delete("/recordings/missing").status_code == 404
     assert c.post("/recordings", json={"label": "x", "width": 640, "height": 480, "frames": [{"t": 0}] * 3}).status_code == 422
 
@@ -298,3 +303,62 @@ def test_reference_clips():
     first = next(f for f in ref["frames"] if f["pose"])
     assert len(first["pose"]) == 33 and len(first["pose"][0]) == 4
     assert c.get("/reference/NOT_A_SIGN").status_code == 404
+
+
+def test_client_diagnostics_are_logged_once_a_minute(tmp_path):
+    """Browser fps / delegate reports reach the events log (first report, then at most once a minute)."""
+    log = tmp_path / "events.jsonl"
+    c = TestClient(create_app(Settings(model_dir=MODEL_DIR, device="cpu", events_log=log)))
+    diag = {"type": "diag", "camera_fps": 30, "tracking_fps": 22, "inference_ms": 18, "delegate": "GPU",
+            "camera": "Integrated Webcam", "width": 640, "height": 480, "landmarks": [[0.1, 0.2]]}
+    with c.websocket_connect("/stream") as ws:
+        ws.send_json({"type": "start", "width": 640, "height": 480})
+        ws.send_json(diag)
+        ws.send_json({**diag, "tracking_fps": 21})  # within the minute: not logged again
+    lines = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert [x["event"] for x in lines] == ["client_diag"]
+    assert lines[0]["tracking_fps"] == 22 and lines[0]["delegate"] == "GPU" and "landmarks" not in lines[0]
+
+
+def test_segmenter_joins_a_short_piece_with_the_rest_of_the_sign():
+    """A sign with a pause: a short piece ended by stillness is held back and joined with the next
+    movement (join_short_s), instead of being classified alone (live COMPUTER takes, 2026-10-15)."""
+    from mudra_ml.streaming import Frame, SegmenterConfig, SignSegmenter
+
+    pose = np.zeros((33, 4), np.float32)
+    pose[11], pose[12] = [0.6, 0.5, 0, 1], [0.4, 0.5, 0, 1]
+
+    def frame(t, x):
+        h = np.zeros((2, 21, 3), np.float32)
+        h[1, :, :2] = [x, 0.55]
+        return Frame(t, h, np.array([False, True]), pose, True)
+
+    def run(join):
+        cfg = SegmenterConfig(on_s=0.05, off_s=0.3, min_sign_s=0.2, pad_pre_s=0, pad_post_s=0, still_s=0.4,
+                              still_speed=0.5, still_below_y=0.0, join_short_s=join, join_gap_s=1.0)
+        seg, events = SignSegmenter(cfg, 640, 480), []
+        x = 0.5
+        for i in range(150):  # rest, 0.2 s move, 1.0 s pause, 1.0 s move, then still (pieces of 0.33-0.44 s were seen live)
+            t = i / 30
+            if 30 <= i < 36 or 66 <= i < 96:  # about 3.5 shoulder widths / s: clearly moving
+                x = 0.5 + 0.08 * np.sin(2 * np.pi * 2 * t)
+            ev, segment = seg.push(frame(t, x))
+            if ev:
+                events.append((ev, None if segment is None else round(float(segment.timestamps_ms[0]) / 1000, 2)))
+        return events
+
+    assert [e[0] for e in run(0.0)].count("sign_ended") == 2  # without joining: two pieces
+    joined = run(0.5)
+    ended = [e for e in joined if e[0] == "sign_ended"]
+    assert len(ended) == 1 and ended[0][1] <= 1.1, joined  # one sign, starting at the first piece
+
+
+def test_events_endpoint_returns_latest_lines_newest_first(tmp_path):
+    log = tmp_path / "events.jsonl"
+    lines = [json.dumps({"event": "sign_ended", "n": i}) for i in range(5)] + ["not json"]
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    c = TestClient(create_app(Settings(model_dir=MODEL_DIR, device="cpu", events_log=log)))
+    body = c.get("/events?limit=3").json()
+    assert body["total"] == 6 and [e["n"] for e in body["events"]] == [4, 3, 2]
+    empty = TestClient(create_app(Settings(model_dir=MODEL_DIR, device="cpu", events_log=tmp_path / "none.jsonl")))
+    assert empty.get("/events").json() == {"total": 0, "events": []}

@@ -113,10 +113,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def log_sign(event: dict) -> None:
         """One line per finished sign (decision summary only, never landmarks) for diagnosing live use."""
         res = event.get("result") or {}
-        line = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "event": event["event"], **(event.get("stats") or {}),
+        line = {"event": event["event"], **(event.get("stats") or {}),
                 "status": res.get("status"), "sign": res.get("sign"), "custom": bool(res.get("custom")),
                 "top": [(c["sign"], round(c["confidence"], 3)) for c in res.get("top_k", [])],
                 "background": round(float(res.get("background", 0.0)), 3)}
+        log_line(line)
+
+    def log_line(line: dict) -> None:
+        line = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), **line}
         try:
             events_log.parent.mkdir(parents=True, exist_ok=True)
             with events_log.open("a", encoding="utf-8") as f:
@@ -125,6 +129,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             pass
 
     session_dir = settings.session_dir
+    # Browser diagnostics written to the events log (numbers and the camera's name; never landmarks)
+    DIAG_KEYS = ("camera_fps", "tracking_fps", "inference_ms", "delegate", "camera", "width", "height")
+    DIAG_LOG_EVERY_S = 60.0
     max_session_frames = 30 * 60 * 20  # 20 minutes at 30 fps
 
     def save_session(frames: list, width: int, height: int, diag: dict) -> None:
@@ -152,7 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         session: StreamingRecognizer | None = None
         frames: list = []
-        size, diag = (0, 0), {}
+        size, diag, diag_logged = (0, 0), {}, -1e9
         try:
             while True:
                 msg = await ws.receive_json()
@@ -162,7 +169,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     session = StreamingRecognizer(bundle, segmenter_cfg, *size, store.bank)
                     continue
                 if msg.get("type") == "diag":  # client tracking diagnostics (fps, delegate), kept with a saved session
-                    diag = {k: msg[k] for k in ("camera_fps", "tracking_fps", "inference_ms", "delegate") if k in msg}
+                    diag = {k: msg[k] for k in DIAG_KEYS if k in msg}
+                    now = time.monotonic()
+                    if now - diag_logged >= DIAG_LOG_EVERY_S:  # first report of a session, then once a minute
+                        diag_logged = now
+                        log_line({"event": "client_diag", **diag})
                     continue
                 if msg.get("type") != "frame" or session is None:
                     continue
@@ -184,6 +195,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except WebSocketDisconnect:
             save_session(frames, *size, diag)
             return
+
+    @app.get("/events")
+    def events(limit: int = 500) -> dict:
+        """Latest lines of the live decision log (sign results and browser diagnostics; never landmarks),
+        newest first, for the admin Records and Reports pages."""
+        limit = max(1, min(int(limit), 5000))
+        if not events_log.exists():
+            return {"total": 0, "events": []}
+        lines = events_log.read_text(encoding="utf-8", errors="replace").splitlines()
+        out = []
+        for line in reversed(lines):
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+            if len(out) >= limit:
+                break
+        return {"total": len(lines), "events": out}
 
     @app.get("/recordings")
     def recordings() -> dict:

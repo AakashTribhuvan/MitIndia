@@ -19,10 +19,28 @@
     background-attachment: fixed;
   }
 
-  /* Focus visible styles for accessibility */
+  /* SignLine tokens for CSS / SVG use (same values as tailwind.config.js `sl`) */
+  :root {
+    --sl-green: #A8E063;
+    --sl-cream: #FBF5EC;
+    --sl-ink: #1C1917;
+    --sl-purple: #6D4AFF;
+    --sl-sun: #FFD84D;
+    --sl-sky: #9DD6FF;
+    --sl-pink: #FF6FA5;
+  }
+
+  body.signline {
+    background-color: var(--sl-cream);
+    background-image: none;
+    color: var(--sl-ink);
+  }
+
+  /* Focus visible styles for accessibility: thick, high-contrast, never colour-only */
   *:focus-visible {
-    outline: 2px solid #8B5CF6;
+    outline: 3px solid #6D4AFF;
     outline-offset: 2px;
+    border-radius: 0.5rem;
   }
 }
 
@@ -216,3 +234,107 @@
 /* Accessibility text size (AccessibilityContext): Tailwind sizes are in rem, so scaling the root scales the app */
 html.text-size-large { font-size: 112.5%; }
 html.text-size-xlarge { font-size: 125%; }
+
+/* Reduced motion (system setting or the in-app toggle): no SignLine animations */
+@media (prefers-reduced-motion: reduce) {
+  .sl-motion, .sl-motion * { animation: none !important; transition: none !important; }
+}
+html.reduced-motion .sl-motion, html.reduced-motion .sl-motion * { animation: none !important; transition: none !important; }
+
+/* ---------------------------------------------------------------------------------------------
+ * SignLine theme for the shared component classes used by the older pages (defined above).
+ * Same names, later in the same layer, so these win: flat panels with outlines, no glass or glow.
+ * --------------------------------------------------------------------------------------------- */
+@layer components {
+  .glass-card {
+    background: #FFFFFF;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid #E9DCC8;
+    box-shadow: none;
+    border-radius: 1.75rem;
+  }
+  .glass-card-hover:hover {
+    transform: translateY(-2px);
+    background: #FFFFFF;
+    border-color: #1C1917;
+    box-shadow: 4px 4px 0 0 #1C1917;
+  }
+  .glass-card-indigo {
+    background: #1C1917;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 2px solid #1C1917;
+    box-shadow: none;
+  }
+  .badge-pill {
+    background: #FFFFFF;
+    color: #1C1917;
+    border: 1.5px solid #1C1917;
+    backdrop-filter: none;
+  }
+  .btn-primary {
+    border-radius: 9999px;
+    font-weight: 700;
+    color: #1C1917;
+    background: #A8E063;
+    border: 2px solid #1C1917;
+    box-shadow: 2px 2px 0 0 #1C1917;
+  }
+  .btn-primary:hover {
+    transform: none;
+    background: #8BCB3F;
+    box-shadow: 2px 2px 0 0 #1C1917;
+  }
+  .btn-primary:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+  .btn-secondary {
+    border-radius: 9999px;
+    font-weight: 700;
+    color: #1C1917;
+    background: #FFFFFF;
+    border: 2px solid #1C1917;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .btn-secondary:hover {
+    transform: none;
+    background: #F4EADB;
+    border-color: #1C1917;
+    color: #1C1917;
+    box-shadow: none;
+  }
+  .btn-peach {
+    border-radius: 9999px;
+    font-weight: 700;
+    color: #1C1917;
+    background: #E6F7D3;
+    border: 2px solid #1C1917;
+    box-shadow: none;
+  }
+  .btn-peach:hover {
+    transform: none;
+    background: #CDEFA8;
+    box-shadow: none;
+  }
+  .text-gradient,
+  .text-gradient-purple,
+  .text-gradient-gold {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    color: #3D7314;
+  }
+}
+
+/* High contrast for the SignLine styles: white surfaces, black text and outlines */
+.high-contrast body.signline,
+.high-contrast .bg-sl-cream,
+.high-contrast .bg-sl-cream-50,
+.high-contrast .bg-sl-cream-100 { background-color: #FFFFFF !important; }
+.high-contrast [class*="text-sl-ink-"],
+.high-contrast [class*="text-mudra-indigo-"] { color: #000000 !important; }
+.high-contrast [class*="border-sl-cream"],
+.high-contrast [class*="border-sl-ink-"] { border-color: #000000 !important; }
+.high-contrast .bg-sl-green { background-color: #8BCB3F !important; }

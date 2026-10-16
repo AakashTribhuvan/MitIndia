@@ -164,7 +164,7 @@ export default function RecordPage() {
   const canRecord = cameraActive && phase === 'idle' && backend.status === 'online' && word.trim()
 
   return (
-    <div className="pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <div className="pt-6 lg:pt-10 pb-24 lg:pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
       <header className="space-y-2">
         <h1 className="font-display text-3xl sm:text-4xl font-bold text-mudra-indigo-900">Record signs</h1>
         <p className="text-mudra-indigo-700 max-w-3xl">
@@ -250,7 +250,9 @@ export default function RecordPage() {
                     <p className="font-semibold">Saved "{lastResult.saved.label_readable}" ({lastResult.saved.label_count} of {TARGET_PER_WORD}).</p>
                     <p>
                       {lastResult.saved.in_model
-                        ? 'MUDRA already knows this word; the recording will improve it at the next training run.'
+                        ? lastResult.saved.custom_active
+                          ? 'Your way of signing this word is now active: try it on the Communicate page.'
+                          : 'MUDRA knows this word. After 3 good recordings, your own way of signing it is used too.'
                         : lastResult.saved.custom_active
                           ? 'New word active: try it on the Communicate page.'
                           : 'Saved for training.'}
@@ -345,7 +347,7 @@ export default function RecordPage() {
                     <div className="flex items-center gap-2 text-xs">
                       {s.custom_active && (
                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" /> new word active
+                          <Sparkles className="w-3 h-3" /> {s.in_model ? 'your examples active' : 'new word active'}
                         </span>
                       )}
                       {s.in_model && <span className="rounded-full bg-mudra-lavender-100 px-2 py-0.5 font-semibold text-mudra-indigo-700">in model</span>}

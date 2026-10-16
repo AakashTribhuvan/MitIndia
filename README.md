@@ -1,5 +1,8 @@
 # MUDRA: Indian Sign Language Learning & Real-Time Communication
 
+**The web app is now branded SignLine** (2026-10-16): demo sign-in with User and Admin workspaces, Game Mode
+lessons, a word library and an admin overview. Sign-in is a demo with no real accounts; see `HANDOVER.md` Section 5.2.
+
 MUDRA turns Indian Sign Language (ISL) into text and speech from an ordinary webcam, and turns
 text or speech into ISL with a 3D avatar. It combines a React web app, a FastAPI recognition
 service and a PyTorch landmark model trained on public and team-recorded ISL data.

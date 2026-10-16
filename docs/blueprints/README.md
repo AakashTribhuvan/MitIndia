@@ -7,3 +7,4 @@ a blueprint describes the target and the milestones towards it.
 | Version | File | Date | Status | Summary |
 |---|---|---|---|---|
 | 1.0 | [MUDRA_DEVELOPMENT_BLUEPRINT_v1.0.md](MUDRA_DEVELOPMENT_BLUEPRINT_v1.0.md) | 2026-10-15 | Draft, pending review | Definition of MUDRA v1.0 and milestones M0-M6, starting from tag `v0.9.0` |
+| 1.1 | [MUDRA_DEVELOPMENT_BLUEPRINT_v1.1.md](MUDRA_DEVELOPMENT_BLUEPRINT_v1.1.md) | 2026-10-16 | Draft, pending review | Adds the SignLine product track (P1-P4) and updates M1/M2 status; v1.0 unchanged |
