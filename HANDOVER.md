@@ -6,12 +6,12 @@
 
 | Field | Value |
 |---|---|
-| Document version | 5 |
-| Last updated | 2026-10-17 |
-| Last updated at commit | the SignLine commit of 2026-10-17 (see Section 21) |
-| Deployed model | `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`) |
+| Document version | 7 |
+| Last updated | 2026-10-16 (system date; the previous entry was dated 10-17 although its commit b5e2da8 is of 2026-10-16) |
+| Last updated at commit | the SignLine Emergency + sign library commit of 2026-10-16 (Section 21) |
+| Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
-| Tests | 69 backend passing (`pytest training app/backend/tests`; data-dependent tests skip without `data/metadata`) + 12 frontend (`npm test` in `app/frontend`) |
+| Tests | 104 backend passing (`pytest training app/backend/tests`: 69 + 6 sign library + 29 SignLine Emergency; data-dependent tests skip without `data/metadata`) + 15 frontend (`npm test` in `app/frontend`) |
 | Repository | `https://github.com/Addy-coder786/Mudra` (remote `mudra`); older pushes: `Addy-coder786/ISL_Addy` (remote `origin`) |
 | Overall state | Recognition is accurate on new takes by **signers seen in training**; accuracy for new people is unmeasured (about 67% on unseen recording sessions); **live use on a real laptop webcam is not yet reliable** (Section 16). Audit: `docs/AUDIT_2026-10-13.md` |
 
@@ -124,6 +124,7 @@ build a sentence and speak it.
 | Area | State | Evidence |
 |---|---|---|
 | Web app, rebranded **SignLine** (Section 5.2) | Working | demo sign-in with User / Admin roles; User: Home, Communication, Learning, Game Mode, Progress, Teach a sign, Settings; Admin: Overview, Users, Content, Records, Reports, Game rules, Settings; checked in desktop and mobile screenshots |
+| **SignLine Emergency** (SOS circle, bottom-right of every page) | **Prototype, demo mode** | buttons / simulated signs / personal gestures → rule-based report with provenance → user confirms → mock delivery to an in-app responder desk; contacts no one; 29 tests; checked in desktop and mobile screenshots. `docs/SIGNLINE_EMERGENCY.md` |
 | Accounts and roles | **Demo only** | no server accounts or passwords; role kept in the browser; anyone can open Admin (Section 16) |
 | Game Mode | Working (local) | 70 lessons over the 314 words, real recorded examples, quizzes, XP / streak / badges in localStorage; no leaderboard (needs accounts) |
 | Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13), **same signers and sessions as training** |
@@ -135,7 +136,9 @@ build a sentence and speak it.
 | Honesty of reported numbers | Audited 2026-10-13 | numbers reproduce; their caveats are in Section 13 and `docs/AUDIT_2026-10-13.md` |
 | App words NAMASTE, WATER, HELP, YES, NO, GOODBYE, HOME, PERSON | Not in the model | no training data; can be recorded on the Record page |
 | Practice-page coach | Rule-based, 8 signs | `islClassifier.js`; not the trained model |
-| Sentence-level recognition | Not available | a 101-sentence experiment reached 57% top-1 and was dropped |
+| **Fingerspelling letters A-Z** (Communication *Spell*, Learning, Game Mode) | Working, not measured live | 70.9% top-1 / 83.8% top-3 on held-out photo groups; 93.8% precision when it answers (54% of photos). `docs/SIGN_LIBRARY.md` |
+| **Phrases** (99, Communication *Phrase*, Learning, Game Mode) | Working as a choice of top guesses | 58.3% top-1 / 81.3% top-5 on held-out videos (same signers); the user always picks the phrase |
+| Continuous sentence recognition (words inside a sentence) | Not available | phrases are recognised only as whole clips |
 
 ---
 
@@ -159,13 +162,22 @@ build a sentence and speak it.
 │   │   │   ├── schemas.py      Pydantic models for /predict
 │   │   │   ├── recognizer.py   SignRecognizer: one-clip prediction for /predict; readable() labels
 │   │   │   ├── recordings.py   RecordingStore: saves Record-page signs (.npz + manifest_app.csv), custom-word bank
-│   │   │   └── references.py   ReferenceClips: one real training example per word for /reference
+│   │   │   ├── references.py   ReferenceClips: one real training example per word for /reference
+│   │   │   └── library.py      letters (LetterModel + example hand shapes) and phrases (second SignRecognizer) for /library, /letters, /phrases
 │   │   ├── models/isl_mudra_combined_v8_desk_bilstm/   model.pt (state dict) + model_card.json (deployed; v6 beside it for rollback)
-│   │   └── tests/              test_api.py (API, streaming, recordings, references), conftest.py
+│   │   ├── models/isl_letters_v1/, isl_phrases_v1_bilstm/   letter MLP (weights.npz) and phrase BiLSTM (docs/SIGN_LIBRARY.md)
+│   │   ├── signline_emergency/ SignLine Emergency (docs/SIGNLINE_EMERGENCY.md): config.py, db.py, models.py, migrations/
+│   │   │                       (Alembic), config/*.json (rules, questions, buttons, demo scenarios), services/ (recognition
+│   │   │                       providers, sequence manager, context engine, questions, profile builder, workflow, state
+│   │   │                       machine, dispatch, location, auth, audit), api/ (router), seed.py, retention.py
+│   │   ├── alembic.ini, .env.example   migrations config; SIGNLINE_EM_* variables
+│   │   ├── var/                local emergency database + generated demo responder password (git-ignored)
+│   │   └── tests/              test_api.py (API, streaming, recordings, references), emergency/ (29 tests), conftest.py
 │   └── frontend/               React 18 + Vite 6 + Tailwind 3 + Three.js
 │       ├── public/models/      hand_landmarker.task, pose_landmarker_lite.task, face_landmarker.task
 │       ├── public/wasm/        MediaPipe Tasks Vision WASM runtime (served locally)
 │       ├── public/ybot.glb     avatar model; public/assets/mudra-intro.mp4 intro video
+│       ├── public/manifest.webmanifest   installable web app (brand/signline-icon-192/512.png, Emergency shortcut)
 │       └── src/
 │           ├── App.jsx, main.jsx, index.css    react-router routes, role guards, start-up loader (Section 5.2)
 │           ├── layouts/Shell.jsx               sidebar (desktop) / top bar + bottom nav (mobile), shared by User and Admin
@@ -173,8 +185,10 @@ build a sentence and speak it.
 │           │                   (practice history), SettingsPage, ComingSoonPage; auth/ (Welcome, SignIn, Register);
 │           │                   user/ (UserHomePage, LearningPage, ProgressHubPage); game/ (GamePage, GameLessonPage);
 │           │                   admin/ (AdminOverviewPage, AdminPages: Users, Content, Records, Reports, Game rules);
-│           │                   legal/LegalPage (7 drafts). HomePage + components/home/* = old landing page, unused
-│           ├── features/       game/ (curriculum.js generated from the model's words, progress.js rules + storage,
+│           │                   legal/LegalPage (7 drafts); emergency/ (Start, Session, Gestures, About, Responder pages).
+│           │                   HomePage + components/home/* = old landing page, unused
+│           ├── features/       emergency/ (api.js client, EmergencySOSButton, shared components); game/ (libraryCurriculum.js =
+│           │                   letter and phrase paths; curriculum.js generated from the model's words, progress.js rules + storage,
 │           │                   quiz.js, useGameProgress.js, __tests__), vocabulary.js (/labels cache)
 │           ├── components/     brand/ (Logo, AppLoader, Doodles), ui/ (Button, Card, StatusPill), AccessibilityModal,
 │           │                   SignReference (also `bare` player for quizzes), avatar/MudraAvatarViewer;
@@ -186,6 +200,7 @@ build a sentence and speak it.
 │               ├── handTracker.js          MediaPipe HandLandmarker + PoseLandmarker on the webcam
 │               ├── signRecognizer.js       WebSocket client for /stream; exports toFrame, API_BASE_URL
 │               ├── recordingClient.js      /recordings client
+│               ├── libraryClient.js        letterSpeller (Spell mode), phraseRecorder (Phrase mode), /library cache
 │               ├── faceExpressionTracker.js, expressionAnalyzer.js   facial cues (experimental, 5 fps)
 │               ├── islClassifier.js        rule-based matcher for 8 coachable signs (Practice, offline fallback)
 │               ├── islDictionary.js        lexicon, readableSign, multilingual sentence builder
@@ -202,6 +217,7 @@ build a sentence and speak it.
 │   │   ├── config.py           PROJECT_ROOT, load_config, project_path
 │   │   ├── streaming.py        SignSegmenter, ModelBundle, StreamingRecognizer (shared by API + benchmarks)
 │   │   ├── fewshot.py          CustomWordBank, FewShotConfig
+│   │   ├── letters.py          fingerspelling features (one frame) + numpy LetterModel (shared by training and the API)
 │   │   ├── preprocessing/      landmark_extractor.py, sequence.py, normalization.py, frame_sampler.py
 │   │   ├── data/               manifest.py (ManifestRow, discovery, labels), splits.py (grouped splits, leakage check)
 │   │   ├── datasets/           isl_dataset.py, augment.py, camera.py (close-up view), distractors.py (fidgets)
@@ -215,6 +231,7 @@ build a sentence and speak it.
 │   └── metadata/               manifests + split sets: NOT in the repository (kept locally, shared separately)
 └── docs/
     ├── AUDIT_2026-10-13.md     audit: what is real, what was faked or overstated, evidence, fixes
+    ├── SIGNLINE_EMERGENCY.md   Emergency Communication Assistant: behaviour, honesty rules, architecture, API, config, limits
     ├── blueprints/             versioned development plans (README index; v1.0 = definition of MUDRA v1.0, milestones M0-M6)
     ├── MUDRA_MASTER_PLAN.md    original analysis, dataset research, dated progress log (very detailed)
     ├── architecture.md         short architecture table
@@ -371,8 +388,11 @@ available / Coming soon / Error), never colour alone.
 | `GET /health` | liveness | `status`, `model_loaded`, `model`, `num_signs` (excludes `_` classes), `device`, `error`, `custom_words` |
 | `GET /labels` | vocabulary | `count`, `labels[]`: `sign`, `label` (readable), `has_reference`, `test_correct`, `test_clips` (from the model card) |
 | `GET /model` | model card minus stats/classes | card fields + `num_signs`, `active_threshold` |
-| `GET /reference/{sign}` | one real training example | `sign`, `label`, `fps` (≤15), `width`, `height`, `frames[]`: `hands` [2 × (21×[x,y,z]) or null], `pose` (33×[x,y,z,vis] or null); 404 if none |
+| `GET /reference/{sign}` | one real training example (also `LETTER_A`-`LETTER_Z`: a still hand shape as 15 identical frames, `kind: "letter"`; phrases: `kind: "phrase"`) | `sign`, `label`, `fps` (≤15), `width`, `height`, `frames[]`: `hands` [2 × (21×[x,y,z]) or null], `pose` (33×[x,y,z,vis] or null); 404 if none |
 | `POST /predict` | classify one pre-cut clip | request `PredictRequest`: `frames` (8-256) of `{hands:[{landmarks 21×3, handedness?, score}], pose: 33×3|4 or null}`, `width`, `height`, `mirrored`, `top_k` (1-10). Response: `status` (`ok`/`uncertain`/`no_hands`/`no_sign`), `sign`, `label`, `confidence`, `top_k[]`, `hand_rate`, `frames_received`, `threshold`, `model`, `inference_ms`. `no_hands` when < `MUDRA_MIN_HAND_RATE` (0.3) of frames show a hand; uses the model card threshold (0.85) |
+| `GET /library` | letters and phrases beyond `/labels` | `letters[]` / `phrases[]`: `sign` (`LETTER_A`…, phrase ids), `label`, `has_reference`; `models` (test top-1/top-3/top-5, thresholds) |
+| `POST /letters/predict` | fingerspelling letter from 1-30 frames (probabilities averaged) | request `{frames, width, height, top_k}` (frame format as `/predict`); response `status` (`ok`/`uncertain`/`no_hands`), `letter`, `sign`, `confidence`, `top_k[]` {`letter`, `sign`, `label`, `confidence`}, `frames_used` |
+| `POST /phrases/predict` | whole-phrase guesses for one recorded clip | same request/response as `/predict`, phrase model (no background class) |
 | `GET /events?limit=500` | latest lines of the live decision log, newest first (admin Records / Reports) | `total`, `events[]` (as written by `log_sign` / `client_diag`; never landmarks); limit 1-5000 |
 | `GET /recordings` | recording summary | `total`, `signs[]` (`sign`, `label`, `recordings`, `rejected`, `signers`, `in_model`, `custom_active`, `items[]`), `custom_words[]` |
 | `POST /recordings` | save one recorded sign | request `{label, signer, width, height, frames[] (1-1200, same frame format as /stream with t)}`; response `sample_id`, `label`, `label_readable`, `signer`, `duration_s`, `any_hand_rate`, `quality_flag` (`""`, `too_short`, `low_hand_detection`, `no_pose`), `label_count`, `custom_active`, `in_model`; 422 on invalid input |
@@ -426,6 +446,8 @@ Backend environment variables (`app/backend/mudra_api/settings.py`, `main.py`), 
 | `MUDRA_EVENTS_LOG` | `experiments/logs/stream_events.jsonl` | per-sign decision log |
 | `MUDRA_RECORDINGS_DIR` | `data` | root for `processed/landmarks/app` and `metadata/manifest_app.csv` |
 | `MUDRA_SESSION_DIR` | unset (off) | opt-in: save each live `/stream` session's landmarks + client diagnostics as `.npz` for `training/scripts/replay_session.py`; needs the signer's consent |
+| `MUDRA_LETTERS_MODEL_DIR` / `MUDRA_LETTERS_LANDMARKS` | `app/backend/models/isl_letters_v1` / `data/processed/landmarks/letters` | letter model; local alphabet-photo landmarks for letter examples |
+| `MUDRA_PHRASES_MODEL_DIR` / `MUDRA_PHRASES_SPLIT` | `app/backend/models/isl_phrases_v1_bilstm` / `data/metadata/splits/phrases_v1/train.csv` | phrase model; split whose clips are phrase examples |
 | `MUDRA_REFERENCE_SPLIT` | `data/metadata/splits/combined_words_v3/train.csv` | where reference examples come from |
 
 Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:8000`),
@@ -436,6 +458,13 @@ Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:
 
 Live decision settings: `training/configs/streaming.json`, loaded by the API at startup and by
 `eval_continuous.py` (Section 9). Few-shot limits: `training/configs/fewshot.json` (Section 10).
+
+### 6.4 SignLine Emergency API
+
+Mounted by `app.include_router(emergency_router())` in `mudra_api/app.py` under `/api/v1/emergency`
+(migrations run and the demo responder is created at startup). CORS now also allows PUT and PATCH and
+the headers `Authorization`, `X-Device-Key`, `X-Session-Token`. Endpoints, access rules, errors and the
+`SIGNLINE_EM_*` variables: `docs/SIGNLINE_EMERGENCY.md` (code: `signline_emergency/api/router.py`).
 
 ---
 
@@ -645,7 +674,8 @@ have a same-word training clip 1-2 camera file numbers away, and all 181 team-wo
 same-word training take recorded within 2 minutes (median 9 s). The only session-disjoint split is
 `combined_words_v2_session` (INCLUDE sessions; its team-word part is still same-session).
 
-INCLUDE has no signer IDs. Other team data at `C:\ISL` not in use: 101 sentence videos
+INCLUDE has no signer IDs. Since 2026-10-16 the alphabet photos and the 101 sentence videos are used for the
+letter and phrase models (`docs/SIGN_LIBRARY.md`). Earlier note: other team data at `C:\ISL` not in use: 101 sentence videos
 (`Videos_Sentence_Level`), ISLVT (78 sentences, with Marathi), `dataset_ISL` alphabet images
 (12,637 images, 100×100 px, one signer; MediaPipe finds a hand in only 25% → unusable for fingerspelling).
 
@@ -665,6 +695,8 @@ rebuild them (`data/README.md`). Early versions of some manifests remain in this
 | `include` | official | INCLUDE 263 words only |
 | `combined_words_v2_fewshot` | 289 classes + `novel.csv` (25 team words held out) | few-shot benchmark (built before the label fixes) |
 | `combined_words_v2_session` | 9 INCLUDE sessions test, 4 val | session-independent test (built before the label fixes) |
+| `phrases_v1` | 486 / 97 / 96 (101 sentences; 99 in training) | phrase model; per video, 5 byte-identical copies removed (`data/metadata/manifest_islsentences.csv`) |
+| letters (inside `train_letters.py`) | 4,562 / 1,065 / 1,070 photos with hands | letter model; k-means colour groups (clothing / background, never faces), whole groups per split |
 
 **Label audit and fixes (2026-10-07).** A cross-session nearest-neighbour check in the model's
 embedding space plus a within-session check found that one INCLUDE recording session (Home words,
@@ -740,6 +772,8 @@ Other measurements:
 | Team words in the unseen-session split | 96.7% (181 clips; **not** a held-out day: same word and day as training takes; earlier docs called it a held-out day) | v3 recipe |
 | INCLUDE-only model on team words | 8.3% | INCLUDE-only model (removed) |
 | Original rule-based / Random-Forest system | ~44% | original app |
+| Letters A-Z, held-out colour groups (1,070 photos) | 70.9% top-1, 83.8% top-3; both hands detected 83.5%, one hand 55.4%; answers on 54.3% at 93.8% precision (threshold 0.70 from validation) | `isl_letters_v1` |
+| Phrases, held-out videos (96, same signers) | 58.3% top-1, 81.3% top-5, macro-F1 0.51 | `isl_phrases_v1_bilstm` |
 | **Developer's live webcam, 2026-10-07** | **0 of 11 signs**; ~6.5 fps; 6 of 11 hit `max_length` | v6 |
 
 ---
@@ -757,6 +791,9 @@ Other measurements:
 | **v6** | `8d233f2` | trained on corrected labels | mean stream correct 89.5% → 92.4% (test, 12 fps) |
 | v7 (gap filling) | – | + hand gap interpolation | no better than v6; not deployed |
 | **v8** | `v0.9.0` (2026-10-15) | `mudra_words_desk.yaml`: + hands resting in view at a desk (half the close-up views) + 5-15 fps camera (30%); with the "parked hands" segmenter rule (`still_s` 0.6) | test streams, 7 fps: desk 38.8% → 74.1% correct; normal 92.2% → 88.6%, close-up 87.0% → 85.4%, close-up + rest 85.1% → 85.2%; clip test 98.06% (97.5% per recording). Desk-view clips: 75% → 97.2%. Not yet tried on a real webcam |
+
+| **letters v1** | 2026-10-16 | `train_letters.py`: alphabet photos, colour-group split, MLP, 200 epochs | 70.9% top-1 test photos (Section 13) |
+| **phrases v1** | 2026-10-16 | `phrases_only.yaml` + seq_len 48, no background | 58.3% top-1 / 81.3% top-5 test videos |
 
 v8 is deployed; v6 is kept beside it for rollback until v8 is confirmed live (`53558e1` removed older models; they remain in git history).
 
@@ -776,6 +813,10 @@ v8 is deployed; v6 is kept beside it for rollback until v8 is confirmed live (`5
 | Hand gap filling (≤0.4 s) as training/inference feature | restores hands to ~100% in data, but streams no better than v6 | val + test streams |
 | Transfer learning for the 101-sentence model | 51.6% vs 57% | sentence split |
 | Transformer instead of BiLSTM | statistical tie on INCLUDE (96.45% ± 0.75 vs BiLSTM within noise, 3 seeds); BiLSTM kept | INCLUDE ablation |
+| Phrases: seq_len 24 (v8 recipe) / seq_len 48 / seq_len 48 without background | validation 61.9% / 60.8% / **69.1%** (chosen); test scores of all three were printed (51.0 / 49.0 / 58.3%) | phrases_v1 |
+| Phrases inside the word model | not tried: at ~58% they would add wrong phrase guesses while people sign words | – |
+| Letters: 80 vs 200 epochs | validation 59.3% vs **62.2%** (chosen) | letter colour groups |
+| Letter photos: as given / 3x / 3x + border / 2x + sharpen / 4x + big border | any hand found in 44% / 38% / **52%** (used) / 40% / 52% of a 260-photo sample | detection only |
 | Face recognition to recover INCLUDE signer IDs | not done: personal-data rule | – |
 
 ---
@@ -835,8 +876,17 @@ Priority order. Each item says what is known and what to do next.
 10. The training README of earlier phases and `docs/MUDRA_MASTER_PLAN.md` contain historical text;
     the master plan's progress log is the detailed lab notebook and is append-only.
 
-**Not built yet** (from the original specs): context engine, urgency detection with confirmation
-UI, sentence-level continuous recognition, fingerspelling, signer-independent evaluation on a
+11. **SignLine Emergency is a demo** (`docs/SIGNLINE_EMERGENCY.md`, "Known limits"): recognition is simulated
+    (the model lacks most emergency signs), gestures are tapped rather than detected, the only destination is
+    the in-app demo responder desk, rate limits and the default secret key are per process, SQLite only,
+    status labels are user-worded on the responder page.
+12. **Letters and phrases are not measured on a live webcam** (`docs/SIGN_LIBRARY.md`): hands were found in only 53% of
+    the 100x100 alphabet photos; I, H, J, M are weak; colour groups only approximate new people; phrases have ~5
+    training videos each from the same signers, so the app always lets the user choose. Licences of both data sets
+    are unconfirmed.
+
+**Not built yet** (from the original specs): context engine for normal conversation (the Emergency feature has a
+rule-based one with a confirmation screen), urgency detection outside Emergency, sentence-level continuous recognition, fingerspelling, signer-independent evaluation on a
 dataset with real signer IDs.
 
 ---
@@ -866,13 +916,22 @@ files in `training/assets/mediapipe/` from
 `https://storage.googleapis.com/mediapipe-models/<task>/<task>/float16/latest/<task>.task`
 (`hand_landmarker`, `pose_landmarker_full`).
 
-**Tools:** `tensorboard --logdir experiments/runs`; `ruff check training app/backend/mudra_api`.
+**Letters and phrases:** rebuild steps in `docs/SIGN_LIBRARY.md` (`extract_letter_images.py`, `train_letters.py`,
+`build_sentence_manifest.py`, `make_splits.py --name phrases_v1`, `train.py`, `export_model.py --data-source phrases`).
+
+**SignLine Emergency:** needs `SQLAlchemy` and `alembic` (now in `requirements.txt`). The database is created
+and migrated at startup in `app/backend/var/`. Demo responder `demo.responder`; password from
+`SIGNLINE_EM_DEMO_RESPONDER_PASSWORD` or generated into `app/backend/var/demo_responder_credentials.txt`.
+Reset: stop the server, delete `app/backend/var/`. Variables: `app/backend/.env.example`.
+
+**Tools:** `tensorboard --logdir experiments/runs`; `ruff check training` from the root and `ruff check mudra_api signline_emergency tests` from `app/backend` (import order depends on the folder ruff runs in).
 
 ---
 
 ## 18. Tests
 
-`pytest training app/backend/tests` → 69 passed (59 test functions, some parametrised), ~25 s.
+`pytest training app/backend/tests` → 104 passed (69 + 6 in `test_library.py` + 29 in `app/backend/tests/emergency`).
+`npm test` → 15 (adds 3 for the letter and phrase paths: all 26 letters once, unique phrases, per-track unlocking, same-track quiz options).
 `npm test` (Vitest) in `app/frontend` → 12 passed (5 for camera practice: hand slots, similarity, rest detection;
 7 for Game Mode): curriculum covers the 314 words once, lesson unlocking, XP and
 first-pass bonus, streak, badges, quiz answers are among the options, words without examples are skipped.
@@ -884,9 +943,11 @@ first-pass bonus, streak, badges, quiz answers are among the options, words with
 | `training/tests/test_splits.py` | grouped splits, locked splits, leakage check, group stripping |
 | `training/tests/test_extractor.py` | extraction of a blank video (empty masks, save/load round trip), hand assignment by pose wrists and its handedness fallback |
 | `training/tests/test_phase2.py` | dataset, background samples, segment, close-up, desk and low-fps crops, models, old model cards, metrics and calibration, config merging, transfer init, an end-to-end training run, gap filling, per-recording test counts |
+| `app/backend/tests/test_library.py` | letter features ignore hand order and image scale, mirror, letter model forward pass, `/library`, `/reference/LETTER_A` + `/letters/predict`, `/phrases/predict` on a training clip |
+| `app/backend/tests/emergency/` | SignLine Emergency: scenarios A-I, state machine, sequence editing, questions, location, gestures, access control, responder flow, analytics privacy, provider swap, real adapter (full list in `docs/SIGNLINE_EMERGENCY.md`) |
 | `app/backend/tests/test_api.py` | /health, /labels, /model, /predict on held-out clips, no-hands, invalid payloads, missing model 503, early-sign behaviour, /stream WebSocket vs the Python implementation, segmenter states, parked hands, live-session saving, recordings store + custom words, custom-word decision, /reference |
 
-`app/backend/tests/conftest.py` redirects the event log so tests never write to the real one. Tests
+`app/backend/tests/conftest.py` redirects the event log and the emergency database so tests never write to the real ones. Tests
 that need the model or landmark data skip automatically when those files are missing.
 
 ---
@@ -934,6 +995,43 @@ that need the model or landmark data skip automatically when those files are mis
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-16 · Sign library: fingerspelling letters and phrases
+- Owner's request: use the data already on the device to add more to the library, usable in Learning, Game Mode
+  and Communication. Everything word-level was already in the 314 words, so: (1) letters from the alphabet photos,
+  (2) whole phrases from the sentence videos.
+- Letters: new `extract_letter_images.py` (hands found in 6,697 of 12,637 photos), `mudra_ml/letters.py`, `train_letters.py`
+  (colour-group split against near-duplicate leakage), model `isl_letters_v1`. Test 70.9% top-1 / 83.8% top-3.
+- Phrases: `build_sentence_manifest.py`, split `phrases_v1`, config `phrases_only.yaml`, `export_model.py --data-source
+  phrases`, model `isl_phrases_v1_bilstm` (99 phrases). Test 58.3% top-1 / 81.3% top-5, so the app shows top guesses.
+- API: `/library`, `/letters/predict`, `/phrases/predict`; `/reference` also serves letters and phrases (`mudra_api/library.py`).
+- App: Communication *Words / Spell / Phrase* switch; Learning lists letters and phrases with examples and camera
+  practice; Game Mode gets *Fingerspelling* (6 lessons) and *Everyday phrases* (26 lessons) paths that unlock on their
+  own; practice checks use the matching model.
+- Measured: backend 104 tests pass, frontend 15; pages checked in screenshots. Not measured on a live webcam.
+- Docs: `docs/SIGN_LIBRARY.md`; HANDOVER sections 2, 3, 6.1, 6.3, 12, 13, 14, 15, 16, 17, 18.
+
+### 2026-10-16 · SignLine Emergency Communication Assistant
+- Owner's request: add the Emergency Communication Assistant (master prompt, renamed MUDRA → SignLine) for web
+  and mobile, without changing the existing project, reachable from a circle at the bottom-right. The
+  "dummy login" instruction covers user sign-in; responders got a real login because the prompt requires
+  server-side role checks.
+- Backend: new package `app/backend/signline_emergency` (SQLAlchemy 2.1.4 + Alembic 1.20.0, SQLite in `var/`):
+  recognition-provider contract with a deterministic mock and a real-model adapter, raw + normalized sign
+  sequence with revisions and undo, JSON-configured rules and questions, incident profiles with provenance,
+  state machine, mock dispatch to the in-app responder desk, location consent, scrypt + HMAC responder auth,
+  session tokens, rate limits, audit trail, privacy-first analytics, retention script. Mounted with one
+  `include_router` line in `mudra_api/app.py`; CORS methods and headers widened.
+- Frontend: floating SOS button on every page (above the mobile bottom nav); pages `/emergency`, session,
+  gestures, about, `/responder` login / dashboard / incident; web app manifest with icons made from the
+  supplied mark (padded, not redrawn).
+- Honesty: recognition labelled simulated (the v8 model lacks most emergency signs); no contact with any real
+  service; "delivered" = received by the demo desk; priority only from explicit answers; 112 shown as India's
+  emergency number.
+- Measured: 29 new backend tests pass (98 backend in total), 12 frontend tests pass; scenario A through sharing
+  and the responder view checked in desktop and 390 px mobile screenshots (a mobile horizontal overflow was
+  found and fixed).
+- Docs: `docs/SIGNLINE_EMERGENCY.md`; HANDOVER sections 2, 3, 6.4, 16, 17, 18.
 
 ### 2026-10-17 · SignLine redesign, M1/M2 live fixes, camera practice, avatar fix (work of 2026-10-15 to 10-17)
 - Look and feel since the first redesign: light green brand theme (owner's choice; logo file unchanged), start-up

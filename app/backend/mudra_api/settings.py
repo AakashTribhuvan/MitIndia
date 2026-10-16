@@ -54,3 +54,16 @@ class Settings:
     recordings_dir: Path = field(
         default_factory=lambda: Path(os.getenv("MUDRA_RECORDINGS_DIR", BACKEND_DIR.parents[1] / "data"))
     )
+    # Sign library beyond the word model (mudra_api/library.py): fingerspelling letters and whole phrases
+    letters_model_dir: Path = field(
+        default_factory=lambda: Path(os.getenv("MUDRA_LETTERS_MODEL_DIR", BACKEND_DIR / "models" / "isl_letters_v1"))
+    )
+    letters_landmarks: Path = field(
+        default_factory=lambda: Path(os.getenv("MUDRA_LETTERS_LANDMARKS", BACKEND_DIR.parents[1] / "data" / "processed" / "landmarks" / "letters"))
+    )
+    phrases_model_dir: Path = field(
+        default_factory=lambda: Path(os.getenv("MUDRA_PHRASES_MODEL_DIR", BACKEND_DIR / "models" / "isl_phrases_v1_bilstm"))
+    )
+    phrases_split: Path = field(
+        default_factory=lambda: Path(os.getenv("MUDRA_PHRASES_SPLIT", BACKEND_DIR.parents[1] / "data" / "metadata" / "splits" / "phrases_v1" / "train.csv"))
+    )

@@ -1,0 +1,975 @@
+{
+  "name": "isl_phrases_v1_bilstm",
+  "created": "2026-10-16T18:44:13+05:30",
+  "source_run": "phrases_len48_nobg_20261016-183814",
+  "task": "Whole-phrase Indian Sign Language phrase recognition from MediaPipe hand + pose landmarks",
+  "classes": [
+    "ARE_YOU_FREE_TODAY",
+    "ARE_YOU_HIDING_SOMETHING",
+    "BRING_WATER_FOR_ME",
+    "CAN_I_HELP_YOU",
+    "CAN_YOU_REPEAT_THAT_PLEASE",
+    "COMB_YOUR_HAIR",
+    "CONGRATULATIONS",
+    "COULD_YOU_PLEASE_TALK_SLOWER",
+    "DO_ME_A_FAVOUR",
+    "DO_NOT_ABUSE_HIM",
+    "DO_NOT_BE_STUBBORN",
+    "DO_NOT_HURT_ME",
+    "DO_NOT_MAKE_ME_ANGRY",
+    "DO_NOT_TAKE_IT_TO_THE_HEART",
+    "DO_NOT_WORRY",
+    "DO_YOU_NEED_SOMETHING",
+    "GO_AND_SLEEP",
+    "HAD_YOUR_FOOD",
+    "HELP_ME",
+    "HE_CAME_BY_TRAIN",
+    "HE_IS_GOING_INTO_THE_ROOM",
+    "HE_IS_ON_THE_WAY",
+    "HE_SHE_IS_MY_FRIEND",
+    "HE_WOULD_BE_COMING_TODAY",
+    "HI_HOW_ARE_YOU",
+    "HOW_ARE_THINGS",
+    "HOW_CAN_I_HELP_YOU",
+    "HOW_CAN_I_TRUST_YOU",
+    "HOW_DARE_YOU",
+    "HOW_OLD_ARE_YOU",
+    "IT_DOES_NOT_MAKE_ANY_DIFFERENCE_TO_ME",
+    "IT_WAS_NICE_CHATTING_WITH_YOU",
+    "I_AM_AFRAID_OF_THAT",
+    "I_AM_AGE",
+    "I_AM_CRYING",
+    "I_AM_FEELING_BORED",
+    "I_AM_FEELING_COLD",
+    "I_AM_FINE_THANK_YOU_SIR",
+    "I_AM_HUNGRY",
+    "I_AM_IN_DILEMMA_WHAT_TO_DO",
+    "I_AM_NOT_REALLY_SURE",
+    "I_AM_REALLY_GRATEFUL",
+    "I_AM_SITTING_IN_THE_CLASS",
+    "I_AM_SO_SORRY_TO_HEAR_THAT",
+    "I_AM_SUFFERING_FROM_FEVER",
+    "I_AM_TIRED",
+    "I_AM_VERY_HAPPY",
+    "I_CAN_NOT_HELP_YOU_THERE",
+    "I_DO_NOT_AGREE",
+    "I_DO_NOT_LIKE_IT",
+    "I_DO_NOT_MEAN_IT",
+    "I_ENJOYED_A_LOT",
+    "I_GOT_HURT",
+    "I_LIKE_YOU_I_LOVE_YOU",
+    "I_NEED_WATER",
+    "I_PROMISE",
+    "I_REALLY_APPRECIATE_IT",
+    "I_SOMEHOW_GOT_TO_KNOW_ABOUT_IT",
+    "I_WAS_STOPPED_BY_SOME_ONE",
+    "LET_HIM_TAKE_TIME",
+    "MY_NAME_IS_XXXXXXXX",
+    "NICE_TO_MEET_YOU",
+    "NOW_ONWARDS_HE_WILL_NEVER_HURT_YOU",
+    "POUR_SOME_MORE_WATER_INTO_THE_GLASS",
+    "PREPARE_THE_BED",
+    "SERVE_THE_FOOD",
+    "SHALL_WE_GO_OUTSIDE",
+    "SPEAK_SOFTLY",
+    "TAKE_CARE_OF_YOURSELF",
+    "TELL_ME_TRUTH",
+    "THANK_YOU_SO_MUCH",
+    "THAT_IS_SO_KIND_OF_YOU",
+    "THIS_PLACE_IS_BEAUTIFUL",
+    "TRY_TO_UNDERSTAND",
+    "TURN_ON_LIGHT_TURN_OFF_LIGHT",
+    "WEAR_THE_SHIRT",
+    "WE_ARE_ALL_WITH_YOU",
+    "WHAT_ARE_YOU_DOING",
+    "WHAT_DID_YOU_TELL_HIM",
+    "WHAT_DO_YOU_DO",
+    "WHAT_DO_YOU_THINK",
+    "WHAT_DO_YOU_WANT_TO_BECOME",
+    "WHAT_HAPPENED",
+    "WHAT_HAVE_YOU_PLANNED_FOR_YOUR_CAREER",
+    "WHAT_IS_YOUR_PHONE_NUMBER",
+    "WHAT_YOU_WANT",
+    "WHEN_WILL_THE_TRAIN_LEAVE",
+    "WHERE_ARE_YOU_FROM",
+    "WHICH_COLLEGESCHOOL_ARE_YOU_FROM",
+    "WHO_ARE_YOU",
+    "WHY_ARE_YOU_ANGRY",
+    "WHY_ARE_YOU_CRYING",
+    "WHY_ARE_YOU_DISAPPOINTED",
+    "YOU_ARE_BAD",
+    "YOU_ARE_GOOD",
+    "YOU_ARE_WELCOME",
+    "YOU_CAN_DO_IT",
+    "YOU_DO_ANYTHING_I_DO_NOT_CARE",
+    "YOU_NEED_A_MEDICINE_TAKE_THIS_ONE"
+  ],
+  "model_config": {
+    "input_dim": 162,
+    "num_classes": 99,
+    "temporal": "bilstm",
+    "mlp_hidden": 256,
+    "mlp_out": 128,
+    "lstm_hidden": 256,
+    "lstm_layers": 2,
+    "tf_dim": 192,
+    "tf_layers": 4,
+    "tf_heads": 4,
+    "tf_ff": 384,
+    "max_len": 128,
+    "dropout": 0.3
+  },
+  "feature_config": {
+    "seq_len": 48,
+    "use_velocity": false,
+    "clip_value": 10.0,
+    "schema_version": 1,
+    "feature_dim": 162
+  },
+  "feature_mean": [
+    0.0,
+    0.0,
+    0.0,
+    -0.12472999840974808,
+    -0.10651200264692307,
+    -0.10815100371837616,
+    -0.2682639956474304,
+    -0.13980700075626373,
+    -0.18151000142097473,
+    -0.3818889856338501,
+    -0.12496600300073624,
+    -0.23474399745464325,
+    -0.46182000637054443,
+    -0.1144149973988533,
+    -0.2851580083370209,
+    -0.28930801153182983,
+    0.002051000017672777,
+    -0.20936499536037445,
+    -0.4744719862937927,
+    0.0549280010163784,
+    -0.300121009349823,
+    -0.5770230293273926,
+    0.058657001703977585,
+    -0.35051700472831726,
+    -0.648248016834259,
+    0.05005199834704399,
+    -0.37742000818252563,
+    -0.26745399832725525,
+    0.09615500271320343,
+    -0.19134299457073212,
+    -0.4732159972190857,
+    0.15159499645233154,
+    -0.27297401428222656,
+    -0.5807979702949524,
+    0.14151699841022491,
+    -0.3054409921169281,
+    -0.6495789885520935,
+    0.11664800345897675,
+    -0.32500600814819336,
+    -0.24717700481414795,
+    0.16556300222873688,
+    -0.17560899257659912,
+    -0.43906399607658386,
+    0.2177709937095642,
+    -0.24443300068378448,
+    -0.536005973815918,
+    0.20344600081443787,
+    -0.2590639889240265,
+    -0.598222017288208,
+    0.17487399280071259,
+    -0.2649010121822357,
+    -0.2288070023059845,
+    0.21446199715137482,
+    -0.16635200381278992,
+    -0.3831450045108795,
+    0.25738999247550964,
+    -0.21957799792289734,
+    -0.463111013174057,
+    0.24709300696849823,
+    -0.22648000717163086,
+    -0.5155199766159058,
+    0.22487300634384155,
+    -0.22547900676727295,
+    0.13787400722503662,
+    0.43192601203918457,
+    -0.8421030044555664,
+    0.0,
+    0.0,
+    0.0,
+    0.12275200337171555,
+    -0.19733600318431854,
+    -0.07160799950361252,
+    0.2707490026950836,
+    -0.3631890118122101,
+    -0.14266300201416016,
+    0.3968749940395355,
+    -0.4523009955883026,
+    -0.20643499493598938,
+    0.4805920124053955,
+    -0.5064629912376404,
+    -0.26562198996543884,
+    0.23839600384235382,
+    -0.40629398822784424,
+    -0.19127599895000458,
+    0.43954598903656006,
+    -0.4713769853115082,
+    -0.2989479899406433,
+    0.5194969773292542,
+    -0.48754701018333435,
+    -0.35923999547958374,
+    0.557873010635376,
+    -0.5005729794502258,
+    -0.39192500710487366,
+    0.22553299367427826,
+    -0.30227500200271606,
+    -0.2121250033378601,
+    0.45913299918174744,
+    -0.3622420132160187,
+    -0.3077389895915985,
+    0.5301809906959534,
+    -0.3732120096683502,
+    -0.3378469944000244,
+    0.5517420172691345,
+    -0.385221004486084,
+    -0.3547070026397705,
+    0.21726199984550476,
+    -0.18679100275039673,
+    -0.2343119978904724,
+    0.43389299511909485,
+    -0.23871900141239166,
+    -0.317440003156662,
+    0.4904769957065582,
+    -0.2514770030975342,
+    -0.3134720027446747,
+    0.502810001373291,
+    -0.26699599623680115,
+    -0.30371299386024475,
+    0.21132099628448486,
+    -0.07376500219106674,
+    -0.2606840133666992,
+    0.3755519986152649,
+    -0.11195400357246399,
+    -0.31648701429367065,
+    0.41992199420928955,
+    -0.12761999666690826,
+    -0.3025189936161041,
+    0.43041399121284485,
+    -0.14522400498390198,
+    -0.2853020131587982,
+    -0.2630389928817749,
+    0.2093369960784912,
+    -1.7783459424972534,
+    -0.04392600059509277,
+    -0.5590839982032776,
+    -1.8793220520019531,
+    0.064130999147892,
+    -0.665008008480072,
+    -1.7382440567016602,
+    -0.14794500172138214,
+    -0.6558160185813904,
+    -1.7226059436798096,
+    0.4992929995059967,
+    0.005189999938011169,
+    -0.09519699960947037,
+    -0.4992929995059967,
+    -0.005189999938011169,
+    0.09519699960947037,
+    0.6735990047454834,
+    0.793811023235321,
+    -0.3228670060634613,
+    -0.7198609709739685,
+    0.736644983291626,
+    -0.6923490166664124,
+    0.36601200699806213,
+    1.0619250535964966,
+    -1.5086499452590942,
+    -0.4561519920825958,
+    0.5459060072898865,
+    -2.5893020629882812,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "feature_std": [
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.6403589844703674,
+    0.7455800175666809,
+    0.7455800175666809,
+    0.7455800175666809,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    0.6933910250663757,
+    1.0046290159225464,
+    1.0046290159225464,
+    1.0046290159225464,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    0.38891300559043884,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "temperature": 0.7792050386514039,
+  "uncertain_threshold": 0.9,
+  "threshold_selection": {
+    "threshold": 0.9,
+    "target_accuracy": 0.9,
+    "minimum_threshold": 0.5,
+    "validation_curve": [
+      {
+        "threshold": 0.05,
+        "coverage": 1.0,
+        "accuracy_on_kept": 0.6907216494845361
+      },
+      {
+        "threshold": 0.1,
+        "coverage": 0.979381443298969,
+        "accuracy_on_kept": 0.7052631578947368
+      },
+      {
+        "threshold": 0.15,
+        "coverage": 0.9587628865979382,
+        "accuracy_on_kept": 0.7096774193548387
+      },
+      {
+        "threshold": 0.2,
+        "coverage": 0.9381443298969072,
+        "accuracy_on_kept": 0.7032967032967034
+      },
+      {
+        "threshold": 0.25,
+        "coverage": 0.8865979381443299,
+        "accuracy_on_kept": 0.7093023255813954
+      },
+      {
+        "threshold": 0.3,
+        "coverage": 0.8350515463917526,
+        "accuracy_on_kept": 0.7160493827160493
+      },
+      {
+        "threshold": 0.35,
+        "coverage": 0.7938144329896907,
+        "accuracy_on_kept": 0.7142857142857143
+      },
+      {
+        "threshold": 0.4,
+        "coverage": 0.7525773195876289,
+        "accuracy_on_kept": 0.7123287671232876
+      },
+      {
+        "threshold": 0.45,
+        "coverage": 0.6701030927835051,
+        "accuracy_on_kept": 0.7538461538461538
+      },
+      {
+        "threshold": 0.5,
+        "coverage": 0.6494845360824743,
+        "accuracy_on_kept": 0.7619047619047619
+      },
+      {
+        "threshold": 0.55,
+        "coverage": 0.6082474226804123,
+        "accuracy_on_kept": 0.7966101694915254
+      },
+      {
+        "threshold": 0.6,
+        "coverage": 0.5979381443298969,
+        "accuracy_on_kept": 0.8103448275862069
+      },
+      {
+        "threshold": 0.65,
+        "coverage": 0.5567010309278351,
+        "accuracy_on_kept": 0.8518518518518519
+      },
+      {
+        "threshold": 0.7,
+        "coverage": 0.5567010309278351,
+        "accuracy_on_kept": 0.8518518518518519
+      },
+      {
+        "threshold": 0.75,
+        "coverage": 0.5463917525773195,
+        "accuracy_on_kept": 0.8490566037735849
+      },
+      {
+        "threshold": 0.8,
+        "coverage": 0.4845360824742268,
+        "accuracy_on_kept": 0.8723404255319149
+      },
+      {
+        "threshold": 0.85,
+        "coverage": 0.4020618556701031,
+        "accuracy_on_kept": 0.8974358974358975
+      },
+      {
+        "threshold": 0.9,
+        "coverage": 0.35051546391752575,
+        "accuracy_on_kept": 0.9117647058823529
+      },
+      {
+        "threshold": 0.95,
+        "coverage": 0.26804123711340205,
+        "accuracy_on_kept": 0.8846153846153846
+      }
+    ]
+  },
+  "metrics": {
+    "validation": {
+      "accuracy": 0.6907216494845361,
+      "macro_f1": 0.6475694444444444,
+      "top5_accuracy": 0.865979381443299
+    },
+    "test": {
+      "accuracy": 0.5833333333333334,
+      "top5_accuracy": 0.8125,
+      "macro_f1": 0.5118055555555556,
+      "weighted_f1": 0.5118055555555556,
+      "ece": 0.14782437232666173,
+      "uncalibrated_ece": 0.09914178404993398
+    },
+    "test_samples": 96
+  },
+  "data": {
+    "name": "Sentence videos (101 phrases, 687 videos, C:\\ISL\\Videos_Sentence_Level)",
+    "pose_release": "extracted locally with MediaPipe Tasks (same pipeline as the webcam)",
+    "license": "provided by the team; source and licence to be confirmed (possibly ISL-CSLTR, CC-BY-4.0)",
+    "attribution": "MUDRA team data."
+  },
+  "limitations": [
+    "99 whole phrases from 687 videos (about 5 training videos per phrase); 58% top-1 and 81% top-5 on held-out videos, so the app shows the top guesses for the user to choose, never one automatic answer.",
+    "Test videos come from the same signers as training videos (no signer IDs); new people will be recognised less often.",
+    "A phrase is classified as one whole clip (start to end); words inside a phrase are not recognised separately.",
+    "Variant chosen on validation (seq_len 48, no background class); the test scores of the alternatives were also seen."
+  ],
+  "per_word_test": {
+    "ARE_YOU_FREE_TODAY": {
+      "correct": 0,
+      "clips": 1
+    },
+    "ARE_YOU_HIDING_SOMETHING": {
+      "correct": 1,
+      "clips": 1
+    },
+    "BRING_WATER_FOR_ME": {
+      "correct": 1,
+      "clips": 1
+    },
+    "CAN_I_HELP_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "CAN_YOU_REPEAT_THAT_PLEASE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "COMB_YOUR_HAIR": {
+      "correct": 1,
+      "clips": 1
+    },
+    "COULD_YOU_PLEASE_TALK_SLOWER": {
+      "correct": 1,
+      "clips": 1
+    },
+    "DO_ME_A_FAVOUR": {
+      "correct": 0,
+      "clips": 1
+    },
+    "DO_NOT_ABUSE_HIM": {
+      "correct": 0,
+      "clips": 1
+    },
+    "DO_NOT_BE_STUBBORN": {
+      "correct": 1,
+      "clips": 1
+    },
+    "DO_NOT_HURT_ME": {
+      "correct": 0,
+      "clips": 1
+    },
+    "DO_NOT_MAKE_ME_ANGRY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "DO_NOT_TAKE_IT_TO_THE_HEART": {
+      "correct": 1,
+      "clips": 1
+    },
+    "DO_NOT_WORRY": {
+      "correct": 0,
+      "clips": 1
+    },
+    "DO_YOU_NEED_SOMETHING": {
+      "correct": 1,
+      "clips": 1
+    },
+    "GO_AND_SLEEP": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HAD_YOUR_FOOD": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HE_CAME_BY_TRAIN": {
+      "correct": 0,
+      "clips": 1
+    },
+    "HE_IS_GOING_INTO_THE_ROOM": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HE_IS_ON_THE_WAY": {
+      "correct": 0,
+      "clips": 1
+    },
+    "HE_SHE_IS_MY_FRIEND": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HE_WOULD_BE_COMING_TODAY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HELP_ME": {
+      "correct": 0,
+      "clips": 1
+    },
+    "HI_HOW_ARE_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HOW_ARE_THINGS": {
+      "correct": 0,
+      "clips": 1
+    },
+    "HOW_CAN_I_HELP_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HOW_CAN_I_TRUST_YOU": {
+      "correct": 0,
+      "clips": 1
+    },
+    "HOW_DARE_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "HOW_OLD_ARE_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_AFRAID_OF_THAT": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_AGE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_CRYING": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_FEELING_BORED": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_FEELING_COLD": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_FINE_THANK_YOU_SIR": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_HUNGRY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_IN_DILEMMA_WHAT_TO_DO": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_NOT_REALLY_SURE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_REALLY_GRATEFUL": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_SITTING_IN_THE_CLASS": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_SO_SORRY_TO_HEAR_THAT": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_SUFFERING_FROM_FEVER": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_AM_TIRED": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_AM_VERY_HAPPY": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_CAN_NOT_HELP_YOU_THERE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_DO_NOT_AGREE": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_DO_NOT_LIKE_IT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_DO_NOT_MEAN_IT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_ENJOYED_A_LOT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_GOT_HURT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_LIKE_YOU_I_LOVE_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_NEED_WATER": {
+      "correct": 0,
+      "clips": 1
+    },
+    "I_PROMISE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_REALLY_APPRECIATE_IT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_SOMEHOW_GOT_TO_KNOW_ABOUT_IT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "I_WAS_STOPPED_BY_SOME_ONE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "IT_DOES_NOT_MAKE_ANY_DIFFERENCE_TO_ME": {
+      "correct": 1,
+      "clips": 1
+    },
+    "IT_WAS_NICE_CHATTING_WITH_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "LET_HIM_TAKE_TIME": {
+      "correct": 0,
+      "clips": 1
+    },
+    "MY_NAME_IS_XXXXXXXX": {
+      "correct": 1,
+      "clips": 1
+    },
+    "NICE_TO_MEET_YOU": {
+      "correct": 0,
+      "clips": 1
+    },
+    "NOW_ONWARDS_HE_WILL_NEVER_HURT_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "POUR_SOME_MORE_WATER_INTO_THE_GLASS": {
+      "correct": 0,
+      "clips": 1
+    },
+    "PREPARE_THE_BED": {
+      "correct": 1,
+      "clips": 1
+    },
+    "SERVE_THE_FOOD": {
+      "correct": 1,
+      "clips": 1
+    },
+    "SHALL_WE_GO_OUTSIDE": {
+      "correct": 1,
+      "clips": 1
+    },
+    "SPEAK_SOFTLY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "TAKE_CARE_OF_YOURSELF": {
+      "correct": 0,
+      "clips": 1
+    },
+    "TELL_ME_TRUTH": {
+      "correct": 0,
+      "clips": 1
+    },
+    "THANK_YOU_SO_MUCH": {
+      "correct": 1,
+      "clips": 1
+    },
+    "THAT_IS_SO_KIND_OF_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "THIS_PLACE_IS_BEAUTIFUL": {
+      "correct": 0,
+      "clips": 1
+    },
+    "TRY_TO_UNDERSTAND": {
+      "correct": 0,
+      "clips": 1
+    },
+    "TURN_ON_LIGHT_TURN_OFF_LIGHT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WE_ARE_ALL_WITH_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WEAR_THE_SHIRT": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHAT_ARE_YOU_DOING": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHAT_DID_YOU_TELL_HIM": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHAT_DO_YOU_DO": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHAT_DO_YOU_THINK": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHAT_DO_YOU_WANT_TO_BECOME": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHAT_HAPPENED": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHAT_IS_YOUR_PHONE_NUMBER": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHAT_YOU_WANT": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHEN_WILL_THE_TRAIN_LEAVE": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHERE_ARE_YOU_FROM": {
+      "correct": 0,
+      "clips": 1
+    },
+    "WHICH_COLLEGESCHOOL_ARE_YOU_FROM": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHO_ARE_YOU": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHY_ARE_YOU_ANGRY": {
+      "correct": 1,
+      "clips": 1
+    },
+    "WHY_ARE_YOU_DISAPPOINTED": {
+      "correct": 0,
+      "clips": 1
+    },
+    "YOU_ARE_BAD": {
+      "correct": 0,
+      "clips": 1
+    },
+    "YOU_ARE_GOOD": {
+      "correct": 1,
+      "clips": 1
+    },
+    "YOU_ARE_WELCOME": {
+      "correct": 1,
+      "clips": 1
+    },
+    "YOU_CAN_DO_IT": {
+      "correct": 0,
+      "clips": 1
+    },
+    "YOU_DO_ANYTHING_I_DO_NOT_CARE": {
+      "correct": 0,
+      "clips": 1
+    },
+    "YOU_NEED_A_MEDICINE_TAKE_THIS_ONE": {
+      "correct": 0,
+      "clips": 1
+    }
+  }
+}

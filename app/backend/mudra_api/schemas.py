@@ -48,6 +48,15 @@ class PredictRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=10)
 
 
+class LetterRequest(BaseModel):
+    """A few recent frames of a held hand shape (fingerspelling); probabilities are averaged over them."""
+
+    frames: list[FrameIn] = Field(min_length=1, max_length=30)
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    top_k: int = Field(default=3, ge=1, le=10)
+
+
 class Candidate(BaseModel):
     sign: str
     label: str

@@ -167,7 +167,7 @@ export default function GameLessonPage() {
               <span className="block text-sm text-sl-ink-600">See how close your hands are to the example, and let SignLine check your sign.</span></span>
             <input type="checkbox" role="switch" checked={practice} onChange={(e) => setPractice(e.target.checked)} className="h-6 w-6 shrink-0 accent-sl-green" />
           </label>
-          {practice && <SignPracticeCamera sign={step.word} label={L(step.word)} />}
+          {practice && <SignPracticeCamera sign={step.word} label={L(step.word)} kind={vocab.entry(step.word)?.kind} />}
           <Card className="flex items-start gap-3 bg-sl-cream-50 p-4">
             <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-sl-green-700" aria-hidden="true" />
             <p className="text-sm"><strong>{step.tip.kind}:</strong> {step.tip.text}</p>

@@ -49,7 +49,7 @@ export function buildLessonSteps(lesson, usable, learned = [], seed = 1) {
   const rand = rng(seed)
   const words = lesson.words.filter(usable)
   const unitPool = LESSONS.filter((l) => l.unitId === lesson.unitId).flatMap((l) => l.words).filter(usable)
-  const widePool = LESSONS.flatMap((l) => l.words).filter(usable)
+  const widePool = LESSONS.filter((l) => l.track === lesson.track).flatMap((l) => l.words).filter(usable) // letters with letters, phrases with phrases
   const poolFor = (w) => (unitPool.length >= 4 ? unitPool : widePool).filter((x) => x !== w)
   const tipStart = Math.floor(rand() * TIPS.length)
 

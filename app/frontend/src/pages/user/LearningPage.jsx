@@ -5,13 +5,12 @@ import SignReference from '../../components/SignReference'
 import SignPracticeCamera from '../../components/practice/SignPracticeCamera'
 import Card from '../../components/ui/Card'
 import StatusPill from '../../components/ui/StatusPill'
-import { CURRICULUM } from '../../features/game/curriculum'
-import { LESSONS, lessonStatus } from '../../features/game/progress'
+import { FULL_CURRICULUM, LESSONS, lessonStatus } from '../../features/game/progress'
 import { useGameProgress } from '../../features/game/useGameProgress'
 import { useVocabulary } from '../../features/vocabulary'
 import LearnPage from '../LearnPage'
 
-const UNITS = CURRICULUM.flatMap((s) => s.units.map((u) => ({ ...u, section: s.title })))
+const UNITS = FULL_CURRICULUM.flatMap((s) => s.units.map((u) => ({ ...u, section: s.title })))
 const LESSON_OF = Object.fromEntries(LESSONS.flatMap((l) => l.words.map((w) => [w, l])))
 
 function WordLibrary() {
@@ -30,15 +29,15 @@ function WordLibrary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, unit, vocab.status])
 
-  const openInfo = open ? vocab.labels[open] : null
+  const openInfo = open ? vocab.entry(open) : null
 
   return (
     <section aria-label="Word library" className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row">
         <label className="relative flex-1">
-          <span className="sr-only">Search words</span>
+          <span className="sr-only">Search words, letters and phrases</span>
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-sl-ink-400" aria-hidden="true" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search 314 words…"
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search words, letters and phrases…"
                  className="min-h-12 w-full rounded-full border-2 border-sl-ink bg-white pl-12 pr-4" />
         </label>
         <label>
@@ -59,7 +58,7 @@ function WordLibrary() {
 
       {practice && open && (
         <div className="space-y-2">
-          <SignPracticeCamera sign={open} label={vocab.label(open)} />
+          <SignPracticeCamera sign={open} label={vocab.label(open)} kind={openInfo?.kind} />
           <button type="button" onClick={() => setPractice(false)} className="text-sm font-bold underline underline-offset-4">Close practice</button>
         </div>
       )}
@@ -96,10 +95,11 @@ function WordLibrary() {
                   Practise in Game Mode ({LESSON_OF[open].unitTitle}, lesson {LESSON_OF[open].number})
                 </Link>
               )}
-              <p className="text-xs text-sl-ink-600">Lessons unlock in order; if this one is locked, pass the earlier lessons first.</p>
+              <p className="text-xs text-sl-ink-600">Lessons unlock in order within words, letters and phrases; if this one is locked, pass the earlier lessons first.</p>
+              {openInfo?.kind === 'letter' && <p className="text-xs text-sl-ink-600">Letter example: a still hand shape from the alphabet photos.</p>}
             </Card>
           ) : (
-            <Card className="p-5 text-sm text-sl-ink-600">Choose a word to watch a real recorded example of its sign.</Card>
+            <Card className="p-5 text-sm text-sl-ink-600">Choose a word, letter or phrase to watch a real recorded example of its sign.</Card>
           )}
         </aside>
       </div>
@@ -114,13 +114,14 @@ export default function LearningPage(props) {
       <div className="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 lg:pt-10">
         <header>
           <p className="text-sm font-bold uppercase tracking-wider text-sl-green-700">Learning</p>
-          <h1 className="font-display text-4xl font-extrabold tracking-tight">Learn ISL words</h1>
+          <h1 className="font-display text-4xl font-extrabold tracking-tight">Learn ISL words, letters and phrases</h1>
           <p className="mt-2 max-w-2xl text-sl-ink-600">
-            Every word SignLine recognises, with a real recorded example. For a guided path with quizzes, use Game Mode.
+            Every word SignLine recognises, the fingerspelling alphabet and everyday phrases, each with a real recorded example.
+            For a guided path with quizzes, use Game Mode.
           </p>
         </header>
         <div role="tablist" aria-label="Learning sections" className="inline-flex rounded-full border-2 border-sl-ink bg-white p-1">
-          {[['library', 'Word library'], ['avatar', 'Avatar studio']].map(([id, text]) => (
+          {[['library', 'Sign library'], ['avatar', 'Avatar studio']].map(([id, text]) => (
             <button key={id} role="tab" type="button" aria-selected={tab === id} onClick={() => setTab(id)}
                     className={`min-h-10 rounded-full px-5 text-sm font-bold ${tab === id ? 'bg-sl-ink text-white' : 'text-sl-ink'}`}>
               {text}

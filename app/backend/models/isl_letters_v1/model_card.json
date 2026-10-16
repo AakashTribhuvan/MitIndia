@@ -1,0 +1,190 @@
+{
+ "name": "isl_letters_v1",
+ "created": "2026-10-16T18:50:40+05:30",
+ "task": "ISL fingerspelling letters A-Z from one frame of hand landmarks",
+ "feature_version": "letters-1",
+ "classes": [
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "U",
+  "V",
+  "W",
+  "X",
+  "Y",
+  "Z"
+ ],
+ "temperature": 1.0,
+ "threshold": 0.7,
+ "threshold_selection": "lowest threshold with >= 90% precision on accepted validation frames",
+ "data": {
+  "source": "C:\\ISL\\dataset_ISL",
+  "photos": 12637,
+  "with_hands": 6697,
+  "split_samples": {
+   "train": 4562,
+   "val": 1065,
+   "test": 1070
+  },
+  "grouping": "k-means colour groups (k=40); the 3 largest always train"
+ },
+ "metrics": {
+  "val": {
+   "n": 1065,
+   "top1": 0.6216,
+   "top3": 0.8225,
+   "accepted_share": 0.431,
+   "accepted_precision": 0.9237
+  },
+  "test": {
+   "n": 1070,
+   "top1": 0.7093,
+   "top3": 0.8383,
+   "accepted_share": 0.543,
+   "accepted_precision": 0.938
+  },
+  "test_two_hands_detected": {
+   "n": 593,
+   "top1": 0.8347,
+   "top3": 0.9292,
+   "accepted_share": 0.6847,
+   "accepted_precision": 0.9655
+  },
+  "test_one_hand_detected": {
+   "n": 477,
+   "top1": 0.5535,
+   "top3": 0.7254,
+   "accepted_share": 0.3669,
+   "accepted_precision": 0.8743
+  }
+ },
+ "per_letter_test": {
+  "A": {
+   "n": 60,
+   "top1": 0.85
+  },
+  "B": {
+   "n": 62,
+   "top1": 1.0
+  },
+  "C": {
+   "n": 74,
+   "top1": 0.865
+  },
+  "D": {
+   "n": 88,
+   "top1": 0.5
+  },
+  "E": {
+   "n": 36,
+   "top1": 0.583
+  },
+  "F": {
+   "n": 64,
+   "top1": 0.766
+  },
+  "G": {
+   "n": 11,
+   "top1": 1.0
+  },
+  "H": {
+   "n": 35,
+   "top1": 0.143
+  },
+  "I": {
+   "n": 10,
+   "top1": 0.0
+  },
+  "J": {
+   "n": 25,
+   "top1": 0.28
+  },
+  "K": {
+   "n": 115,
+   "top1": 0.861
+  },
+  "L": {
+   "n": 38,
+   "top1": 0.947
+  },
+  "M": {
+   "n": 19,
+   "top1": 0.368
+  },
+  "N": {
+   "n": 11,
+   "top1": 0.909
+  },
+  "O": {
+   "n": 17,
+   "top1": 0.706
+  },
+  "P": {
+   "n": 42,
+   "top1": 0.81
+  },
+  "Q": {
+   "n": 34,
+   "top1": 0.706
+  },
+  "R": {
+   "n": 20,
+   "top1": 0.8
+  },
+  "S": {
+   "n": 30,
+   "top1": 0.767
+  },
+  "T": {
+   "n": 89,
+   "top1": 0.483
+  },
+  "U": {
+   "n": 38,
+   "top1": 0.974
+  },
+  "V": {
+   "n": 22,
+   "top1": 1.0
+  },
+  "W": {
+   "n": 20,
+   "top1": 0.4
+  },
+  "X": {
+   "n": 55,
+   "top1": 0.582
+  },
+  "Y": {
+   "n": 23,
+   "top1": 0.565
+  },
+  "Z": {
+   "n": 32,
+   "top1": 0.906
+  }
+ },
+ "limitations": [
+  "Trained on 100x100 photos; hands were found in only part of them, both hands in fewer.",
+  "No signer IDs: colour groups only approximate new people; the test set may share people with training.",
+  "Static photos: letters that move (J, Z in some conventions) are learned from a still pose.",
+  "Not yet measured on live webcam frames."
+ ]
+}

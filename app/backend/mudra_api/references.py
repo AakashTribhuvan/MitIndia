@@ -18,13 +18,13 @@ MAX_FPS = 15.0
 
 
 class ReferenceClips:
-    def __init__(self, split_csv: Path):
+    def __init__(self, split_csv: Path, sources: tuple[str, ...] = PREFERRED_SOURCES):
         self.best: dict[str, object] = {}
         if Path(split_csv).exists():
             for r in read_manifest(Path(split_csv)):
-                if r.source not in PREFERRED_SOURCES or r.quality_flag or not Path(r.landmarks_path).exists():
+                if r.source not in sources or r.quality_flag or not Path(r.landmarks_path).exists():
                     continue
-                rank = (PREFERRED_SOURCES.index(r.source), -r.any_hand_rate)
+                rank = (sources.index(r.source), -r.any_hand_rate)
                 cur = self.best.get(r.label)
                 if cur is None or rank < cur[0]:
                     self.best[r.label] = (rank, r)

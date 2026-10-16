@@ -1,0 +1,6 @@
+# Measurement run: the 101 sentence videos as whole-phrase classes, same recipe as the deployed v8.
+#     python training/scripts/train.py --config phrases_only.yaml --name phrases_only
+base: mudra_words_desk.yaml
+
+data:
+  split_dir: data/metadata/splits/phrases_v1

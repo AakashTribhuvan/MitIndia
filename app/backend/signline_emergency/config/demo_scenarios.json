@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "_comment": "Deterministic mock-recognition scenarios. Confidence values are fixed so tests and demos repeat exactly. This is simulated recognition, not the SignLine model.",
+  "vocabulary": [
+    "HELP", "CHEST", "PAIN", "BREATHING", "DIFFICULT", "FIRE", "SMOKE", "ACCIDENT", "INJURY", "PERSON", "FOLLOWING",
+    "UNSAFE", "WATER", "THIRSTY", "STOMACH", "HEAD", "BACK", "BLEEDING", "UNCONSCIOUS", "TRAPPED", "THREAT",
+    "ASSAULT", "ATTACK", "CAR", "STREET_OR_ROAD", "SICK", "FEVER", "DOCTOR", "HOSPITAL", "POLICE", "LOST",
+    "MISSING", "DROWNING", "EARTHQUAKE", "FLOOD", "ELECTRIC_SHOCK", "YES", "NO"
+  ],
+  "scenarios": [
+    {"id": "A_MEDICAL", "title": "Medical", "description": "Chest pain and difficulty breathing.",
+     "events": [["HELP", 0.95], ["CHEST", 0.93], ["PAIN", 0.91], ["BREATHING", 0.88], ["DIFFICULT", 0.86]]},
+    {"id": "B_ROAD_ACCIDENT", "title": "Road accident", "description": "Accident with an injury.",
+     "events": [["ACCIDENT", 0.92], ["INJURY", 0.9], ["HELP", 0.95]]},
+    {"id": "C_FIRE", "title": "Fire", "description": "Fire and smoke.",
+     "events": [["FIRE", 0.94], ["SMOKE", 0.9], ["HELP", 0.95]]},
+    {"id": "D_SAFETY", "title": "Personal safety", "description": "Being followed and feeling unsafe.",
+     "events": [["PERSON", 0.9], ["FOLLOWING", 0.87], ["UNSAFE", 0.89]]},
+    {"id": "E_GESTURE", "title": "Custom gesture", "description": "A personal 'My Medical SOS' gesture.",
+     "gesture": {"name": "My Medical SOS", "intent": "REQUEST_MEDICAL_HELP",
+                 "message": "I need medical assistance. Please communicate with me using text."}},
+    {"id": "F_HELP_ONLY", "title": "Ambiguous help", "description": "Only 'help' is signed.",
+     "events": [["HELP", 0.93]]},
+    {"id": "G_CORRECTION", "title": "Incorrect recognition", "description": "'Chest' is recognised with low confidence; correct it.",
+     "events": [["CHEST", 0.52], ["PAIN", 0.9]], "hint": "Correct CHEST to STOMACH and watch the summary update."},
+    {"id": "H_NO_EMERGENCY", "title": "No emergency", "description": "Water, thirsty.",
+     "events": [["WATER", 0.9], ["THIRSTY", 0.84]]},
+    {"id": "I_DISPATCH_FAILURE", "title": "Dispatch failure", "description": "A valid report whose delivery fails.",
+     "events": [["HELP", 0.95], ["CHEST", 0.92], ["PAIN", 0.9]], "simulate_dispatch_failure": true}
+  ]
+}

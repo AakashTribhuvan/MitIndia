@@ -43,7 +43,23 @@ def limitations(num_classes: int) -> list[str]:
     ]
 
 
+def phrase_limitations(num_classes: int) -> list[str]:
+    return [
+        (f"{num_classes} whole phrases from 687 videos (about 5 training videos per phrase); 58% top-1 and 81% top-5 on "
+         "held-out videos, so the app shows the top guesses for the user to choose, never one automatic answer."),
+        "Test videos come from the same signers as training videos (no signer IDs); new people will be recognised less often.",
+        "A phrase is classified as one whole clip (start to end); words inside a phrase are not recognised separately.",
+        "Variant chosen on validation (seq_len 48, no background class); the test scores of the alternatives were also seen.",
+    ]
+
+
 DATA_SOURCES = {
+    "phrases": {
+        "name": r"Sentence videos (101 phrases, 687 videos, C:\ISL\Videos_Sentence_Level)",
+        "pose_release": "extracted locally with MediaPipe Tasks (same pipeline as the webcam)",
+        "license": "provided by the team; source and licence to be confirmed (possibly ISL-CSLTR, CC-BY-4.0)",
+        "attribution": "MUDRA team data.",
+    },
     "include": {
         "name": "INCLUDE (Sridhar et al., ACM Multimedia 2020)",
         "pose_release": "OpenHands v1 labelled ISLR poses, Zenodo record 6674324",
@@ -139,7 +155,9 @@ def main() -> None:
         "name": args.name,
         "created": datetime.now().astimezone().isoformat(timespec="seconds"),
         "source_run": run_dir.name,
-        "task": "Isolated Indian Sign Language word recognition from MediaPipe hand + pose landmarks",
+        "task": ("Whole-phrase" if args.data_source == "phrases" else "Isolated")
+        + " Indian Sign Language " + ("phrase" if args.data_source == "phrases" else "word")
+        + " recognition from MediaPipe hand + pose landmarks",
         "classes": ckpt["classes"],
         "model_config": ckpt["model_config"],
         "feature_config": ckpt["feature_config"],
@@ -150,7 +168,7 @@ def main() -> None:
         "threshold_selection": threshold,
         "metrics": {"validation": summary["val"], "test": summary["test"], "test_samples": summary["test_samples"]},
         "data": DATA_SOURCES[args.data_source],
-        "limitations": limitations(len(ckpt["classes"])),
+        "limitations": (phrase_limitations if args.data_source == "phrases" else limitations)(len(ckpt["classes"])),
     }
     per_word = per_word_test_accuracy(run_dir, project_path(cfg["data"]["split_dir"]))
     if per_word:

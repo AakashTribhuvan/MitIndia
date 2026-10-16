@@ -6,6 +6,7 @@ import json
 import logging
 import time
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from mudra_ml.config import project_path
@@ -14,11 +15,13 @@ from mudra_ml.streaming import ModelBundle, SegmenterConfig, StreamingRecognizer
 from pydantic import BaseModel, Field
 
 from mudra_api import __version__
+from mudra_api.library import Library
 from mudra_api.recognizer import SignRecognizer, readable
 from mudra_api.recordings import RecordingStore, frames_to_sequence, parse_frame
 from mudra_api.references import ReferenceClips
-from mudra_api.schemas import PredictRequest, PredictResponse
+from mudra_api.schemas import LetterRequest, PredictRequest, PredictResponse
 from mudra_api.settings import Settings
+from signline_emergency.api import emergency_router
 
 log = logging.getLogger("mudra_api")
 
@@ -37,8 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Content-Type"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "Authorization", "X-Device-Key", "X-Session-Token"],
     )
 
     recognizer: SignRecognizer | None = None
@@ -54,6 +57,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         load_error = f"Model files not found in {settings.model_dir}: {exc.filename}"
         log.warning(load_error)
     references = ReferenceClips(settings.reference_split)
+    library = Library(settings.letters_model_dir, settings.letters_landmarks, settings.phrases_model_dir,
+                      settings.phrases_split, settings.device)
     store = RecordingStore(settings.recordings_dir, bundle, FewShotConfig.load(project_path("training/configs/fewshot.json")))
     if len(store.bank):
         log.info("Custom words from app recordings: %s", ", ".join(store.bank.labels))
@@ -95,10 +100,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/reference/{sign}")
     def reference(sign: str) -> dict:
         """One real training example of a sign as landmark frames, so people can see which sign the model learned."""
-        found = references.get(sign.upper())
+        found = references.get(sign.upper()) or library.reference(sign.upper())
         if found is None:
             raise HTTPException(status_code=404, detail=f"no training example for {sign}")
-        return {**found, "label": readable(found["sign"])}
+        sign_id = found["sign"]
+        label = f"Letter {sign_id.removeprefix('LETTER_')}" if sign_id.startswith("LETTER_") else readable(sign_id)
+        return {**found, "label": label}
 
     @app.get("/model")
     def model_card() -> dict:
@@ -241,8 +248,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="recording not found")
         return {"deleted": sample_id}
 
+    @app.get("/library")
+    def library_listing() -> dict:
+        """Letters and phrases available besides the word model's vocabulary (/labels)."""
+        return library.listing()
+
+    @app.post("/letters/predict")
+    def predict_letter(req: LetterRequest) -> dict:
+        if library.letter_model is None:
+            raise HTTPException(status_code=503, detail="no letter model loaded")
+        frames = [[np.asarray(h.landmarks, np.float32) for h in f.hands] for f in req.frames]
+        result = library.letter_model.predict_frames(frames, req.width, req.height, req.top_k)
+        result["sign"] = f"LETTER_{result['letter']}" if result["letter"] else None
+        for t in result["top_k"]:
+            t["sign"], t["label"] = f"LETTER_{t['letter']}", t["letter"]
+        return result
+
+    @app.post("/phrases/predict", response_model=PredictResponse)
+    def predict_phrase(req: PredictRequest) -> dict:
+        if library.phrase_model is None:
+            raise HTTPException(status_code=503, detail="no phrase model loaded")
+        return library.phrase_model.predict(req, settings.min_hand_rate)
+
     @app.post("/predict", response_model=PredictResponse)
     def predict(req: PredictRequest) -> dict:
         return require_model().predict(req, settings.min_hand_rate)
 
+    app.include_router(emergency_router())  # SignLine Emergency (self-contained, /api/v1/emergency)
     return app

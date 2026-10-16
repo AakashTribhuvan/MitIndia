@@ -21,6 +21,8 @@ updated at every push and documents the architecture, interfaces, data, models a
 | Live recognition (Communicate) | Sign start/end detection, automatic word adding, spoken sentence, "How to sign it" examples |
 | New words from the Record page | Work immediately (few-shot), stored for retraining |
 | Data pipeline | MediaPipe landmarks, leakage-safe splits, label audit |
+| Fingerspelling letters A-Z and 99 phrases | New (from the team's alphabet photos and sentence videos): letters 70.9% / phrases 58.3% first guess on held-out data (phrases are always chosen by the user from the top guesses); in Learning, Game Mode and Communication (*Spell* / *Phrase*). Not yet measured on a live webcam. See [`docs/SIGN_LIBRARY.md`](docs/SIGN_LIBRARY.md) |
+| Emergency help (SOS circle, bottom-right) | Prototype in demo mode: explain an emergency with buttons, signs or a personal gesture, check and correct what SignLine understood, confirm, share with an in-app demo responder desk. Contacts no one; signs are simulated because the model does not know most emergency signs. In a real emergency in India, call 112. See [`docs/SIGNLINE_EMERGENCY.md`](docs/SIGNLINE_EMERGENCY.md) |
 | Known gap | Live use on a laptop webcam is not yet reliable: the browser tracks at ~6 fps on some machines and the model has seen few signers (66.7% on unseen recording sessions) |
 | Honest reading of the numbers | Test clips come from the same signers and sessions as training clips, so the 97-99% figures below are "new takes by known signers". Accuracy for new people has not been measured. See the audit: [`docs/AUDIT_2026-10-13.md`](docs/AUDIT_2026-10-13.md) |
 
@@ -134,6 +136,7 @@ UI: Signing... / "Looks like X" <---- (3-cut smoothing, threshold,           upp
 Backend: http://localhost:8000 (`/docs`, `/health`, `/labels`, `/predict`, `/recordings`,
 `/reference/{sign}`, WebSocket `/stream`). If port 8000 is taken, start the backend with
 `MUDRA_PORT=8010` and set `VITE_API_URL=http://localhost:8010` in `app/frontend/.env`.
+Emergency API: `/api/v1/emergency/...`; responder desk at http://localhost:3000/responder (user `demo.responder`, password in `app/backend/var/demo_responder_credentials.txt` after the first start, or set `SIGNLINE_EM_DEMO_RESPONDER_PASSWORD`).
 Requires Python 3.12+ (tested on 3.14) and Node 20+. An NVIDIA GPU is optional (training only).
 The backend `requirements.txt` pins the CUDA 12.8 PyTorch build used for training; for a CPU-only
 machine install `torch` from the default index instead.

@@ -26,6 +26,13 @@ import CommunicatePage from './pages/CommunicatePage'
 import PracticePage from './pages/PracticePage'
 import RecordPage from './pages/RecordPage'
 import { API_BASE_URL } from './services/signRecognizer'
+import EmergencySOSButton from './features/emergency/EmergencySOSButton'
+import { EmergencyLayout } from './features/emergency/components'
+import EmergencyStartPage from './pages/emergency/EmergencyStartPage'
+import EmergencySessionPage from './pages/emergency/EmergencySessionPage'
+import EmergencyGesturesPage from './pages/emergency/EmergencyGesturesPage'
+import EmergencyAboutPage from './pages/emergency/EmergencyAboutPage'
+import { ResponderDashboardPage, ResponderIncidentPage, ResponderLoginPage } from './pages/emergency/ResponderPages'
 
 const USER_NAV = [
   { to: '/app/home', label: 'Home', icon: Home },
@@ -183,8 +190,22 @@ export default function App() {
             <Route path="/legal/:doc" element={<LegalPage />} />
             <Route path="/app/*" element={<RequireRole role="user"><UserRoutes /></RequireRole>} />
             <Route path="/admin/*" element={<RequireRole role="admin"><AdminRoutes /></RequireRole>} />
+            {/* SignLine Emergency: open without signing in */}
+            <Route path="/emergency" element={<EmergencyLayout />}>
+              <Route index element={<EmergencyStartPage />} />
+              <Route path="session/:sessionId" element={<EmergencySessionPage />} />
+              <Route path="gestures" element={<EmergencyGesturesPage />} />
+              <Route path="about" element={<EmergencyAboutPage />} />
+            </Route>
+            <Route path="/settings/emergency-gestures" element={<Navigate to="/emergency/gestures" replace />} />
+            <Route path="/responder" element={<EmergencyLayout responder />}>
+              <Route index element={<ResponderDashboardPage />} />
+              <Route path="login" element={<ResponderLoginPage />} />
+              <Route path="incidents/:incidentId" element={<ResponderIncidentPage />} />
+            </Route>
             <Route path="*" element={<StartRoute />} />
           </Routes>
+          <EmergencySOSButton />
           <AccessibilityModal />
         </BrowserRouter>
       </SessionProvider>

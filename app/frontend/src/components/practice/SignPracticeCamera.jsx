@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, Check, Hand, ScanLine, X } from 'lucide-react'
 import handTracker, { cameraErrorKind } from '../../services/handTracker'
 import signRecognizer, { API_BASE_URL } from '../../services/signRecognizer'
+import { isLetter, letterSpeller, phraseRecorder } from '../../services/libraryClient'
 import { atRest, bestMatch, describe, frameFeatures, referenceFeatures, signingFrames } from '../../features/practice/handFeatures'
 import StatusPill from '../ui/StatusPill'
 
@@ -32,15 +33,19 @@ function Meter({ label, score, hint }) {
 }
 
 /**
- * Camera practice for one word: live comparison with the word's recorded example (GET /reference)
- * and an optional check by the trained model (WebSocket /stream). Guidance only; nothing is stored.
+ * Camera practice for one word, letter or phrase: live comparison with its recorded example (GET /reference)
+ * and an optional check by the matching model (words: WebSocket /stream; letters: /letters/predict;
+ * phrases: /phrases/predict on a recorded clip). Guidance only; nothing is stored.
  */
-export default function SignPracticeCamera({ sign, label }) {
+export default function SignPracticeCamera({ sign, label, kind }) {
+  const checkKind = kind || (isLetter(sign) ? 'letter' : 'word') // word | letter | phrase
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const refFeatures = useRef([])
   const smooth = useRef({ shape: null, position: null, palm: null })
   const checking = useRef(false)
+  const checkKindRef = useRef(checkKind)
+  checkKindRef.current = checkKind
   const lastPanel = useRef(0)
   const [on, setOn] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -74,7 +79,11 @@ export default function SignPracticeCamera({ sign, label }) {
       handTracker.drawPose(ctx, results.poseLandmarks, canvas.width, canvas.height, true)
       for (const lm of results.multiHandLandmarks || []) handTracker.drawSkeleton(ctx, lm, canvas.width, canvas.height, true)
     }
-    if (checking.current) signRecognizer.addFrame(results)
+    if (checking.current) {
+      if (checkKindRef.current === 'letter') letterSpeller.addFrame(results)
+      else if (checkKindRef.current === 'phrase') phraseRecorder.addFrame(results)
+      else signRecognizer.addFrame(results)
+    }
 
     const aspect = results.width && results.height ? results.width / results.height : 4 / 3
     const live = frameFeatures(results.multiHandLandmarks || [], results.poseLandmarks, aspect)
@@ -102,6 +111,9 @@ export default function SignPracticeCamera({ sign, label }) {
     signRecognizer.onPrediction = null
     signRecognizer.onActivity = null
     signRecognizer.reset()
+    letterSpeller.stop()
+    letterSpeller.onGuess = null
+    phraseRecorder.cancel()
   }
 
   const stop = useCallback(() => {
@@ -114,6 +126,8 @@ export default function SignPracticeCamera({ sign, label }) {
   useEffect(() => () => { // leaving the page: release the camera
     if (handTracker.isTracking) handTracker.stopCamera()
     checking.current = false
+    letterSpeller.stop()
+    phraseRecorder.cancel()
     signRecognizer.onPrediction = null
     signRecognizer.onActivity = null
     signRecognizer.reset()
@@ -133,6 +147,19 @@ export default function SignPracticeCamera({ sign, label }) {
   }
 
   const startCheck = async () => {
+    if (checkKind === 'letter') {
+      letterSpeller.onGuess = (r) => r.status !== 'no_hands' && setCheck((c) => ({ ...c, state: 'waiting', result: r }))
+      letterSpeller.start()
+      checking.current = true
+      setCheck({ active: true, state: 'waiting', result: null })
+      return
+    }
+    if (checkKind === 'phrase') {
+      phraseRecorder.start()
+      checking.current = true
+      setCheck({ active: true, state: 'signing', result: null })
+      return
+    }
     if (signRecognizer.status !== 'online') await signRecognizer.connect()
     if (signRecognizer.status !== 'online') {
       setCheck({ active: false, state: 'offline', result: null })
@@ -142,6 +169,17 @@ export default function SignPracticeCamera({ sign, label }) {
     signRecognizer.onPrediction = (p) => setCheck((c) => ({ ...c, state: 'waiting', result: p }))
     checking.current = true
     setCheck({ active: true, state: 'waiting', result: null })
+  }
+
+  const finishPhrase = async () => {
+    checking.current = false
+    setCheck((c) => ({ ...c, state: 'checking' }))
+    try {
+      const res = await phraseRecorder.stop()
+      setCheck({ active: true, state: 'done', result: res.status === 'too_short' ? { status: 'no_sign', top_k: [] } : res })
+    } catch {
+      setCheck({ active: false, state: 'offline', result: null })
+    }
   }
 
   const r = check.result
@@ -213,8 +251,16 @@ export default function SignPracticeCamera({ sign, label }) {
             <div className="space-y-2" aria-live="polite">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold">
-                  {check.state === 'signing' ? 'Signing… hold still at the end.' : 'Sign the word now, then hold your hands still or lower them.'}
+                  {checkKind === 'letter' ? 'Hold the letter shape still in view.'
+                    : checkKind === 'phrase' ? (check.state === 'signing' ? 'Sign the whole phrase, then press Done.' : check.state === 'checking' ? 'Checking…' : 'Checked.')
+                    : check.state === 'signing' ? 'Signing… hold still at the end.' : 'Sign the word now, then hold your hands still or lower them.'}
                 </p>
+                {checkKind === 'phrase' && check.state === 'signing' && (
+                  <button type="button" onClick={finishPhrase} className="btn-primary min-h-9 px-4 py-1.5 text-sm">Done</button>
+                )}
+                {checkKind === 'phrase' && check.state === 'done' && (
+                  <button type="button" onClick={startCheck} className="btn-secondary min-h-9 px-4 py-1.5 text-sm">Try again</button>
+                )}
                 <button type="button" onClick={() => { stopCheck(); setCheck({ active: false, state: 'idle', result: null }) }}
                         className="inline-flex items-center gap-1 text-sm font-bold underline underline-offset-4">
                   <X className="h-4 w-4" aria-hidden="true" /> Stop checking

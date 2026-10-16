@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { InputModeSwitch, PhrasePanel, SpellPanel } from '../components/communicate/LibraryModes'
+import { fetchLibrary, letterSpeller, phraseRecorder } from '../services/libraryClient'
 import { 
   Camera, 
   CameraOff, 
@@ -115,6 +117,17 @@ export default function CommunicatePage() {
     : ISL_VOCABULARY_LEXICON.filter((v) => RULE_SIGNS.includes(v.id))
   const [vocabOpen, setVocabOpen] = useState(false)
   const [referenceSign, setReferenceSign] = useState(null) // word whose training example is shown
+  // Words (trained word model, automatic) | Spell (fingerspelling letters) | Phrase (choose from top guesses)
+  const [inputMode, setInputMode] = useState('words')
+  const inputModeRef = useRef('words')
+  const [libraryModels, setLibraryModels] = useState({})
+  useEffect(() => { fetchLibrary().then((l) => setLibraryModels(l.models || {})) }, [])
+  const changeInputMode = (mode) => {
+    inputModeRef.current = mode
+    setInputMode(mode)
+    signRecognizer.reset() // drop a half-finished word segment
+    setSuggestions([])
+  }
   useEffect(() => {
     if (modelState.status !== 'online') return
     fetch(`${API_BASE_URL}/labels`)
@@ -371,6 +384,13 @@ export default function CommunicatePage() {
       results.multiHandLandmarks.forEach((landmarks) => {
         handTracker.drawSkeleton(ctx, landmarks, canvas.width, canvas.height, true)
       })
+    }
+
+    // Spell / Phrase modes: frames go to the letter or phrase recogniser instead of the word stream
+    if (inputModeRef.current !== 'words') {
+      if (inputModeRef.current === 'spell') letterSpeller.addFrame(results)
+      else phraseRecorder.addFrame(results)
+      return
     }
 
     // Trained model path: stream landmarks; predictions arrive via signRecognizer.onPrediction
@@ -906,7 +926,15 @@ export default function CommunicatePage() {
           {/* Right: Interpretation Panel & Speech Out */}
           <div className="lg:col-span-5 space-y-5 lg:pt-0">
             <div className="glass-card rounded-3xl p-5 sm:p-6 border border-mudra-lavender-200/80 shadow-lg space-y-7">
-              
+              <InputModeSwitch mode={inputMode} onChange={changeInputMode} />
+
+              {inputMode === 'spell' ? (
+                <SpellPanel cameraActive={cameraActive} accuracy={libraryModels.letters}
+                            onCommitWord={(word) => setRecognizedTokens((prev) => [...prev, word])} />
+              ) : inputMode === 'phrase' ? (
+                <PhrasePanel cameraActive={cameraActive} accuracy={libraryModels.phrases}
+                             onCommitPhrase={(phrase) => setRecognizedTokens((prev) => [...prev, phrase])} />
+              ) : (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold uppercase tracking-[0.12em] text-mudra-lavender-800 font-display">
@@ -1004,6 +1032,7 @@ export default function CommunicatePage() {
                   <p className="text-[11px] text-mudra-indigo-500 mt-1">{modelState.error}</p>
                 )}
               </div>
+              )}
 
               {/* Committed Sequence Buffer */}
               <div className="space-y-2 pt-2 border-t border-mudra-lavender-200/60">

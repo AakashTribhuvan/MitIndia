@@ -36,3 +36,6 @@ Thumbs.db
 
 # Dataset manifests and split CSVs stay local (shared separately, see data/README.md)
 data/metadata/
+
+# SignLine Emergency local database and generated demo credentials (never committed)
+app/backend/var/

@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "_comment": "Button-based communication. Every selection is stored as USER_REPORTED, never as a prediction.",
+  "needs": [
+    {"id": "MEDICAL", "label": "Medical help", "icon": "HeartPulse", "signals": ["CHOICE:MEDICAL"]},
+    {"id": "POLICE_SAFETY", "label": "Police or safety", "icon": "ShieldAlert", "signals": ["CHOICE:POLICE_SAFETY"]},
+    {"id": "FIRE", "label": "Fire", "icon": "Flame", "signals": ["CHOICE:FIRE"]},
+    {"id": "GENERAL_ACCIDENT", "label": "Accident", "icon": "CarFront", "signals": ["CHOICE:GENERAL_ACCIDENT"]},
+    {"id": "TRAPPED", "label": "Rescue", "icon": "LifeBuoy", "signals": ["CHOICE:TRAPPED"]},
+    {"id": "GENERAL_HELP", "label": "General help", "icon": "HandHelping", "signals": ["CHOICE:GENERAL_HELP"]},
+    {"id": "OTHER", "label": "Something else", "icon": "MessageCircleQuestion", "signals": ["CHOICE:GENERAL_HELP"]}
+  ],
+  "details": {
+    "MEDICAL": [
+      {"id": "CHEST_PAIN", "label": "Chest pain", "signals": ["CHEST", "PAIN"]},
+      {"id": "BREATHING", "label": "Difficulty breathing", "signals": ["BREATHING", "DIFFICULT"]},
+      {"id": "BLEEDING", "label": "Bleeding", "signals": ["BLEEDING"]},
+      {"id": "SEVERE_PAIN", "label": "Severe pain", "signals": ["PAIN"]},
+      {"id": "UNCONSCIOUS", "label": "Someone is unconscious", "signals": ["UNCONSCIOUS"]},
+      {"id": "OTHER_MEDICAL", "label": "Other medical problem", "signals": ["SICK"]},
+      {"id": "NOT_SURE", "label": "Not sure", "signals": []}
+    ],
+    "POLICE_SAFETY": [
+      {"id": "THREAT", "label": "Someone is threatening me", "signals": ["THREAT", "UNSAFE"]},
+      {"id": "FOLLOWED", "label": "Someone is following me", "signals": ["PERSON", "FOLLOWING", "UNSAFE"]},
+      {"id": "ASSAULTED", "label": "I have been assaulted", "signals": ["ASSAULT"]},
+      {"id": "UNSAFE", "label": "I feel unsafe", "signals": ["UNSAFE"]},
+      {"id": "OTHER_SAFETY", "label": "Other safety concern", "signals": ["UNSAFE"]}
+    ],
+    "GENERAL_ACCIDENT": [
+      {"id": "ROAD", "label": "Road accident", "signals": ["ACCIDENT", "STREET_OR_ROAD"]},
+      {"id": "INJURED", "label": "Someone is injured", "signals": ["ACCIDENT", "INJURY"]},
+      {"id": "TRAPPED", "label": "Someone is trapped", "signals": ["ACCIDENT", "TRAPPED"]},
+      {"id": "VEHICLE", "label": "Vehicle danger", "signals": ["ACCIDENT", "VEHICLE"]},
+      {"id": "OTHER_ACCIDENT", "label": "Other accident", "signals": ["ACCIDENT"]}
+    ],
+    "FIRE": [
+      {"id": "FIRE", "label": "Fire", "signals": ["FIRE"]},
+      {"id": "SMOKE", "label": "Smoke", "signals": ["SMOKE"]},
+      {"id": "TRAPPED", "label": "Someone may be trapped", "signals": ["FIRE", "TRAPPED"]},
+      {"id": "OTHER_FIRE", "label": "Other fire-related danger", "signals": ["FIRE"]}
+    ]
+  }
+}

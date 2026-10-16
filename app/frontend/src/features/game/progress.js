@@ -6,6 +6,7 @@
  * return plain state objects so they can be tested without a browser.
  */
 import { CURRICULUM } from './curriculum'
+import { LIBRARY_CURRICULUM } from './libraryCurriculum'
 
 export const RULES = {
   xpPerCorrect: 10,
@@ -27,13 +28,23 @@ export const BADGES = [
   { id: 'perfect', title: 'Sharp eyes', text: 'Finish a lesson with every answer right.', test: (s) => Object.values(s.lessons).some((l) => l.perfect) },
 ]
 
-/** All lessons in path order: {id, words, sectionId, sectionTitle, unitId, unitTitle, number, index}. */
-export const LESSONS = CURRICULUM.flatMap((section) =>
+/**
+ * Words (the 314-word path) plus the library tracks: fingerspelling letters and phrases. Each track is its
+ * own path: its first lesson is open from the start, then each lesson unlocks the next one in that track.
+ */
+export const FULL_CURRICULUM = [...CURRICULUM.map((s) => ({ ...s, track: 'words' })), ...LIBRARY_CURRICULUM]
+
+/** All lessons in path order: {id, words, track, sectionId, sectionTitle, unitId, unitTitle, number, index}. */
+export const LESSONS = FULL_CURRICULUM.flatMap((section) =>
   section.units.flatMap((unit) =>
     unit.lessons.map((words, i) => ({
-      id: `${unit.id}-${i + 1}`, words, sectionId: section.id, sectionTitle: section.title,
+      id: `${unit.id}-${i + 1}`, words, track: section.track, sectionId: section.id, sectionTitle: section.title,
       unitId: unit.id, unitTitle: unit.title, number: i + 1, unitLessons: unit.lessons.length,
     })))).map((l, index) => ({ ...l, index }))
+
+// the lesson before each one in its own track (null for a track's first lesson)
+const PREVIOUS_IN_TRACK = {}
+LESSONS.reduce((last, l) => { PREVIOUS_IN_TRACK[l.id] = last[l.track] || null; return { ...last, [l.track]: l.id } }, {})
 
 export const LESSON_BY_ID = Object.fromEntries(LESSONS.map((l) => [l.id, l]))
 
@@ -56,10 +67,11 @@ function sectionPassed(s, sectionId) {
   return LESSONS.filter((l) => l.sectionId === sectionId).every((l) => s.lessons[l.id]?.passed)
 }
 
-/** completed | available | locked. A lesson unlocks when the one before it is passed. */
+/** completed | available | locked. A lesson unlocks when the one before it in its track is passed. */
 export function lessonStatus(s, lesson) {
   if (s.lessons[lesson.id]?.passed) return 'completed'
-  if (lesson.index === 0 || s.lessons[LESSONS[lesson.index - 1].id]?.passed) return 'available'
+  const previous = PREVIOUS_IN_TRACK[lesson.id]
+  if (!previous || s.lessons[previous]?.passed) return 'available'
   return 'locked'
 }
 

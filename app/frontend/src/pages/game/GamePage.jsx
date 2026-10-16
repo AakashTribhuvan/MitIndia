@@ -3,8 +3,7 @@ import { Check, Flame, Lock, Play, Star, Trophy, Zap } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import StatusPill from '../../components/ui/StatusPill'
 import { DoodleSparkle, DoodleSquiggle } from '../../components/brand/Doodles'
-import { CURRICULUM } from '../../features/game/curriculum'
-import { BADGES, LESSONS, RULES, dayKey, lessonStatus, level, nextLesson, streak } from '../../features/game/progress'
+import { BADGES, FULL_CURRICULUM, LESSONS, RULES, dayKey, lessonStatus, level, nextLesson, streak } from '../../features/game/progress'
 import { useGameProgress } from '../../features/game/useGameProgress'
 import { useVocabulary } from '../../features/vocabulary'
 
@@ -85,7 +84,7 @@ export default function GamePage() {
         <p className="text-sm font-bold uppercase tracking-wider text-sl-green-700">Game Mode</p>
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Your learning path</h1>
         <p className="mt-2 max-w-2xl text-sl-ink-600">
-          {LESSONS.length} short lessons covering all words SignLine knows. Each lesson shows real recorded examples, then
+          {LESSONS.length} short lessons covering all words SignLine knows, the fingerspelling alphabet and everyday phrases (each path unlocks on its own). Each lesson shows real recorded examples, then
           checks that you can recognise them. Progress is saved in this browser.
         </p>
         {next && (
@@ -93,13 +92,21 @@ export default function GamePage() {
             <Play className="h-4 w-4" aria-hidden="true" /> {progress.lessons[next.id] ? 'Continue' : 'Start'}: {next.unitTitle}, lesson {next.number}
           </Link>
         )}
+        <nav aria-label="Learning paths" className="mt-4 flex flex-wrap gap-2 text-sm">
+          {[['words', 'Words'], ['alphabet', 'Fingerspelling A–Z'], ['phrases', 'Everyday phrases']].map(([track, text]) => {
+            const first = FULL_CURRICULUM.find((s) => s.track === track)
+            return first && (
+              <a key={track} href={`#sec-${first.id}`} className="rounded-full border-2 border-sl-ink bg-white px-3 py-1 font-bold hover:bg-sl-cream-200">{text}</a>
+            )
+          })}
+        </nav>
       </header>
 
       <GameStats progress={progress} />
 
       <div className="grid gap-8 lg:grid-cols-[1fr_18rem]">
         <div className="space-y-10">
-          {CURRICULUM.map((section) => (
+          {FULL_CURRICULUM.map((section) => (
             <section key={section.id} aria-labelledby={`sec-${section.id}`}>
               <h2 id={`sec-${section.id}`} className="flex items-center gap-3 font-display text-2xl font-extrabold">
                 {section.title}

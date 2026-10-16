@@ -77,3 +77,32 @@ describe('quiz', () => {
     expect(steps.some((s) => s.word === lesson.words[0])).toBe(false)
   })
 })
+
+describe('library tracks (letters and phrases)', () => {
+  it('teaches all 26 letters once and keeps phrases unique', () => {
+    const letters = LESSONS.filter((l) => l.track === 'alphabet').flatMap((l) => l.words)
+    expect(letters).toEqual([...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((c) => `LETTER_${c}`))
+    const phrases = LESSONS.filter((l) => l.track === 'phrases').flatMap((l) => l.words)
+    expect(phrases.length).toBeGreaterThan(90)
+    expect(new Set(phrases).size).toBe(phrases.length)
+  })
+
+  it('opens the first lesson of every track without passing the word path', () => {
+    const s = emptyState()
+    for (const track of ['words', 'alphabet', 'phrases']) {
+      const lessons = LESSONS.filter((l) => l.track === track)
+      expect(lessonStatus(s, lessons[0])).toBe('available')
+      expect(lessonStatus(s, lessons[1])).toBe('locked')
+    }
+    const firstLetters = LESSONS.find((l) => l.track === 'alphabet')
+    const after = recordLesson(s, firstLetters.id, ok(firstLetters.words), firstLetters.words).state
+    expect(lessonStatus(after, LESSONS.filter((l) => l.track === 'alphabet')[1])).toBe('available')
+    expect(lessonStatus(after, LESSONS[1])).toBe('locked') // the word path is unaffected
+  })
+
+  it('draws quiz options from the same track', () => {
+    const lesson = LESSONS.find((l) => l.track === 'alphabet')
+    const steps = buildLessonSteps(lesson, () => true, [], 3)
+    for (const step of steps.filter((x) => x.options)) expect(step.options.every((o) => o.startsWith('LETTER_'))).toBe(true)
+  })
+})

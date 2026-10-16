@@ -1,0 +1,226 @@
+// Generated 2026-10-16 from the letter model (26 letters) and the phrase model's 99 phrases
+// (app/backend/models/isl_phrases_v1_bilstm). Each section is its own track: its first lesson is open from the start.
+// Regenerate if those models change.
+export const LIBRARY_CURRICULUM = [
+  {
+    "id": "fingerspelling",
+    "title": "Fingerspelling",
+    "track": "alphabet",
+    "units": [
+      {
+        "id": "alphabet",
+        "title": "Alphabet A–Z",
+        "lessons": [
+          [
+            "LETTER_A",
+            "LETTER_B",
+            "LETTER_C",
+            "LETTER_D",
+            "LETTER_E"
+          ],
+          [
+            "LETTER_F",
+            "LETTER_G",
+            "LETTER_H",
+            "LETTER_I",
+            "LETTER_J"
+          ],
+          [
+            "LETTER_K",
+            "LETTER_L",
+            "LETTER_M",
+            "LETTER_N",
+            "LETTER_O"
+          ],
+          [
+            "LETTER_P",
+            "LETTER_Q",
+            "LETTER_R",
+            "LETTER_S",
+            "LETTER_T"
+          ],
+          [
+            "LETTER_U",
+            "LETTER_V",
+            "LETTER_W"
+          ],
+          [
+            "LETTER_X",
+            "LETTER_Y",
+            "LETTER_Z"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "phrases",
+    "title": "Everyday phrases",
+    "track": "phrases",
+    "units": [
+      {
+        "id": "phrase-questions",
+        "title": "Questions",
+        "lessons": [
+          [
+            "ARE_YOU_FREE_TODAY",
+            "ARE_YOU_HIDING_SOMETHING",
+            "CAN_I_HELP_YOU",
+            "CAN_YOU_REPEAT_THAT_PLEASE"
+          ],
+          [
+            "COULD_YOU_PLEASE_TALK_SLOWER",
+            "DO_ME_A_FAVOUR",
+            "DO_NOT_ABUSE_HIM",
+            "DO_NOT_BE_STUBBORN"
+          ],
+          [
+            "DO_NOT_HURT_ME",
+            "DO_NOT_MAKE_ME_ANGRY",
+            "DO_NOT_TAKE_IT_TO_THE_HEART",
+            "DO_NOT_WORRY"
+          ],
+          [
+            "DO_YOU_NEED_SOMETHING",
+            "HOW_ARE_THINGS",
+            "HOW_CAN_I_HELP_YOU",
+            "HOW_CAN_I_TRUST_YOU"
+          ],
+          [
+            "HOW_DARE_YOU",
+            "HOW_OLD_ARE_YOU",
+            "SHALL_WE_GO_OUTSIDE",
+            "WHAT_ARE_YOU_DOING"
+          ],
+          [
+            "WHAT_DID_YOU_TELL_HIM",
+            "WHAT_DO_YOU_DO",
+            "WHAT_DO_YOU_THINK",
+            "WHAT_DO_YOU_WANT_TO_BECOME"
+          ],
+          [
+            "WHAT_HAPPENED",
+            "WHAT_HAVE_YOU_PLANNED_FOR_YOUR_CAREER",
+            "WHAT_IS_YOUR_PHONE_NUMBER",
+            "WHAT_YOU_WANT"
+          ],
+          [
+            "WHEN_WILL_THE_TRAIN_LEAVE",
+            "WHERE_ARE_YOU_FROM",
+            "WHO_ARE_YOU"
+          ],
+          [
+            "WHY_ARE_YOU_ANGRY",
+            "WHY_ARE_YOU_CRYING",
+            "WHY_ARE_YOU_DISAPPOINTED"
+          ]
+        ]
+      },
+      {
+        "id": "phrase-sentences",
+        "title": "Everyday sentences",
+        "lessons": [
+          [
+            "BRING_WATER_FOR_ME",
+            "COMB_YOUR_HAIR",
+            "CONGRATULATIONS",
+            "GO_AND_SLEEP"
+          ],
+          [
+            "HAD_YOUR_FOOD",
+            "HELP_ME",
+            "HE_CAME_BY_TRAIN",
+            "HE_IS_GOING_INTO_THE_ROOM"
+          ],
+          [
+            "HE_IS_ON_THE_WAY",
+            "HE_SHE_IS_MY_FRIEND",
+            "HE_WOULD_BE_COMING_TODAY",
+            "HI_HOW_ARE_YOU"
+          ],
+          [
+            "IT_DOES_NOT_MAKE_ANY_DIFFERENCE_TO_ME",
+            "IT_WAS_NICE_CHATTING_WITH_YOU",
+            "I_AM_AFRAID_OF_THAT",
+            "I_AM_AGE"
+          ],
+          [
+            "I_AM_CRYING",
+            "I_AM_FEELING_BORED",
+            "I_AM_FEELING_COLD",
+            "I_AM_FINE_THANK_YOU_SIR"
+          ],
+          [
+            "I_AM_HUNGRY",
+            "I_AM_IN_DILEMMA_WHAT_TO_DO",
+            "I_AM_NOT_REALLY_SURE",
+            "I_AM_REALLY_GRATEFUL"
+          ],
+          [
+            "I_AM_SITTING_IN_THE_CLASS",
+            "I_AM_SO_SORRY_TO_HEAR_THAT",
+            "I_AM_SUFFERING_FROM_FEVER",
+            "I_AM_TIRED"
+          ],
+          [
+            "I_AM_VERY_HAPPY",
+            "I_CAN_NOT_HELP_YOU_THERE",
+            "I_DO_NOT_AGREE",
+            "I_DO_NOT_LIKE_IT"
+          ],
+          [
+            "I_DO_NOT_MEAN_IT",
+            "I_ENJOYED_A_LOT",
+            "I_GOT_HURT",
+            "I_LIKE_YOU_I_LOVE_YOU"
+          ],
+          [
+            "I_NEED_WATER",
+            "I_PROMISE",
+            "I_REALLY_APPRECIATE_IT",
+            "I_SOMEHOW_GOT_TO_KNOW_ABOUT_IT"
+          ],
+          [
+            "I_WAS_STOPPED_BY_SOME_ONE",
+            "LET_HIM_TAKE_TIME",
+            "MY_NAME_IS_XXXXXXXX",
+            "NICE_TO_MEET_YOU"
+          ],
+          [
+            "NOW_ONWARDS_HE_WILL_NEVER_HURT_YOU",
+            "POUR_SOME_MORE_WATER_INTO_THE_GLASS",
+            "PREPARE_THE_BED",
+            "SERVE_THE_FOOD"
+          ],
+          [
+            "SPEAK_SOFTLY",
+            "TAKE_CARE_OF_YOURSELF",
+            "TELL_ME_TRUTH",
+            "THANK_YOU_SO_MUCH"
+          ],
+          [
+            "THAT_IS_SO_KIND_OF_YOU",
+            "THIS_PLACE_IS_BEAUTIFUL",
+            "TRY_TO_UNDERSTAND",
+            "TURN_ON_LIGHT_TURN_OFF_LIGHT"
+          ],
+          [
+            "WEAR_THE_SHIRT",
+            "WE_ARE_ALL_WITH_YOU",
+            "WHICH_COLLEGESCHOOL_ARE_YOU_FROM"
+          ],
+          [
+            "YOU_ARE_BAD",
+            "YOU_ARE_GOOD",
+            "YOU_ARE_WELCOME"
+          ],
+          [
+            "YOU_CAN_DO_IT",
+            "YOU_DO_ANYTHING_I_DO_NOT_CARE",
+            "YOU_NEED_A_MEDICINE_TAKE_THIS_ONE"
+          ]
+        ]
+      }
+    ]
+  }
+]
