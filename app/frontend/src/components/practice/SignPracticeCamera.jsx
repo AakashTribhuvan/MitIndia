@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, Check, Hand, ScanLine, X } from 'lucide-react'
-import handTracker, { cameraErrorKind } from '../../services/handTracker'
+import handTracker, { cameraErrorMessage } from '../../services/handTracker'
 import signRecognizer, { API_BASE_URL } from '../../services/signRecognizer'
 import { isLetter, letterSpeller, phraseRecorder } from '../../services/libraryClient'
 import { atRest, bestMatch, describe, frameFeatures, referenceFeatures, signingFrames } from '../../features/practice/handFeatures'
@@ -10,7 +10,7 @@ const CAMERA_ERRORS = {
   denied: 'Camera permission was denied. Allow the camera for this site, then try again.',
   not_found: 'No camera was found.',
   in_use: 'The camera is in use by another app or tab. Close it, then try again.',
-  unknown: 'The camera could not be started.',
+  unknown: 'The camera or hand tracker could not be started. Try again, then share the technical detail if it persists.',
 }
 
 function Meter({ label, score, hint }) {
@@ -140,7 +140,7 @@ export default function SignPracticeCamera({ sign, label, kind }) {
       await handTracker.startCamera(videoRef.current, onResults, { resolution: 480 })
       setOn(true)
     } catch (e) {
-      setError(CAMERA_ERRORS[cameraErrorKind(e)])
+      setError(cameraErrorMessage(e, CAMERA_ERRORS))
     } finally {
       setStarting(false)
     }

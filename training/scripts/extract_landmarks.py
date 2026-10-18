@@ -23,9 +23,10 @@ from mudra_ml.preprocessing.landmark_extractor import LandmarkExtractor, load_se
 _EXTRACTOR: LandmarkExtractor | None = None
 
 
-def _init_worker(extraction_cfg: dict) -> None:
+def _init_worker(extraction_cfg: dict, asset_dir: str | None = None) -> None:
     global _EXTRACTOR
     _EXTRACTOR = LandmarkExtractor(
+        **({"asset_dir": Path(asset_dir)} if asset_dir else {}),
         pose_model=extraction_cfg["pose_model"],
         min_hand_detection_confidence=extraction_cfg["min_hand_detection_confidence"],
         min_pose_detection_confidence=extraction_cfg["min_pose_detection_confidence"],
@@ -75,6 +76,7 @@ def main() -> None:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--source", required=True)
     parser.add_argument("--config", default="data.yaml")
+    parser.add_argument("--asset-dir", type=Path, default=None, help="directory containing the MediaPipe .task models")
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--limit", type=int, default=None, help="process only the first N files (smoke test)")
@@ -101,7 +103,10 @@ def main() -> None:
     workers = args.workers or cfg["extraction"]["workers"]
 
     results: list[ManifestRow] = []
-    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(cfg["extraction"],)) as pool:
+    asset_dir = str(project_path(args.asset_dir)) if args.asset_dir else None
+    with ProcessPoolExecutor(
+        max_workers=workers, initializer=_init_worker, initargs=(cfg["extraction"], asset_dir)
+    ) as pool:
         futures = [
             pool.submit(_process, row, str(out_root / row.label / f"{row.sample_id}.npz"), min_hand_rate, args.overwrite)
             for row in rows

@@ -18,21 +18,20 @@ import {
   Mic,
   MicOff,
   Send,
-  ArrowRightLeft
+  ArrowRightLeft,
+  FlipHorizontal
 } from 'lucide-react'
-import handTracker, { cameraErrorKind } from '../services/handTracker'
-import signRecognizer, { API_BASE_URL } from '../services/signRecognizer'
+import handTracker, { cameraErrorMessage } from '../services/handTracker'
+import signRecognizer, { API_BASE_URL, staticPoseRecognizer } from '../services/signRecognizer'
 import faceExpressionTracker from '../services/faceExpressionTracker'
 import { classifyISLSign } from '../services/islClassifier'
-import { ISL_VOCABULARY_LEXICON, buildMultilingualSentence, findISLLexiconItem, readableSign } from '../services/islDictionary'
+import { ISL_VOCABULARY_LEXICON, buildMultilingualSentence, findISLLexiconItem, predictNextSigns, readableSign } from '../services/islDictionary'
 import { analyzeExpression, FACE_UNAVAILABLE_EXPRESSION, INITIAL_EXPRESSION } from '../services/expressionAnalyzer'
 import MudraAvatarViewer from '../components/avatar/MudraAvatarViewer'
 import SignReference from '../components/SignReference'
 import { useAccessibility } from '../context/AccessibilityContext'
 
-const AUTO_SPEAK_PAUSE_MS = 2500
-// An unsure sign still adds its best guess at this confidence or more (below it the sign is dropped)
-const AUTO_ADD_MIN = 0.5
+const AUTO_SPEAK_PAUSE_MS = 3000
 const LOW_FPS = 15
 // Per-browser camera preferences (localStorage can be unavailable: then nothing is remembered)
 function readPref(key, fallback) {
@@ -45,7 +44,7 @@ const CAMERA_ERRORS = {
   denied: 'Camera permission was denied. Allow the camera for this site (the camera icon in the address bar), then try again.',
   not_found: 'No camera was found. Connect or enable a webcam, then try again.',
   in_use: 'The camera is in use by another app (Zoom, Teams, Camera…) or blocked by the system. Close that app, then try again.',
-  unknown: 'The camera could not be started. Check that it works in another app, then try again.'
+  unknown: 'The camera or hand tracker could not be started. Try again, then share the technical detail if it persists.'
 }
 // Signs islClassifier.js can detect (offline fallback)
 const RULE_SIGNS = ['HELLO', 'WATER', 'NAMASTE', 'THANK_YOU', 'YES', 'NO', 'PEACE', 'HELP']
@@ -59,6 +58,7 @@ export default function CommunicatePage() {
   // --- Mode A (Sign to Speech) State ---
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const faceLandmarksRef = useRef(null)
 
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraLoading, setCameraLoading] = useState(false)
@@ -67,6 +67,12 @@ export default function CommunicatePage() {
   const [cameras, setCameras] = useState([])
   const [cameraId, setCameraId] = useState(() => readPref('mudra_camera_id', ''))
   const [cameraRes, setCameraRes] = useState(() => Number(readPref('mudra_camera_res', '480')) || 480)
+  const [mirrored, setMirrored] = useState(() => readPref('mudra_camera_mirrored', 'true') !== 'false')
+  const [trackerVisibility, setTrackerVisibility] = useState({ hands: true, body: true, face: true, palm: true })
+  const mirroredRef = useRef(mirrored)
+  const trackerVisibilityRef = useRef(trackerVisibility)
+  mirroredRef.current = mirrored
+  trackerVisibilityRef.current = trackerVisibility
   const [isPaused, setIsPaused] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -79,10 +85,26 @@ export default function CommunicatePage() {
   })
 
   const [recognizedTokens, setRecognizedTokens] = useState([])
+  const [sentenceDraftTokens, setSentenceDraftTokens] = useState([])
   const [generatedSentence, setGeneratedSentence] = useState('')
   const [selectedLang, setSelectedLang] = useState('en')
   const [faceStatus, setFaceStatus] = useState('initializing')
+  const [blinkToAccept, setBlinkToAccept] = useState(false)
+  const [blinkAccepted, setBlinkAccepted] = useState(false)
   const [expression, setExpression] = useState(INITIAL_EXPRESSION)
+  const sentenceContextTokens = sentenceDraftTokens.length ? sentenceDraftTokens : recognizedTokens
+  const nextWordSuggestions = predictNextSigns(sentenceContextTokens)
+  const sentenceDraftRef = useRef(sentenceDraftTokens)
+  const recognizedTokensRef = useRef(recognizedTokens)
+  const blinkToAcceptRef = useRef(blinkToAccept)
+  const blinkClosedRef = useRef(false)
+  const lastBlinkAtRef = useRef(0)
+  const acceptPredictedSignRef = useRef(() => {})
+  const nextWordSuggestionsRef = useRef(nextWordSuggestions)
+  sentenceDraftRef.current = sentenceDraftTokens
+  recognizedTokensRef.current = recognizedTokens
+  blinkToAcceptRef.current = blinkToAccept
+  nextWordSuggestionsRef.current = nextWordSuggestions
 
   const stableSignRef = useRef({ sign: null, count: 0 })
   const lastCommittedSignRef = useRef(null)
@@ -107,9 +129,17 @@ export default function CommunicatePage() {
   const lastSpokenRef = useRef('')
   const sentenceRef = useRef('')
   const [modelState, setModelState] = useState({ status: signRecognizer.status, info: null, error: null })
-  const [recognitionModels, setRecognitionModels] = useState([])
-  const [recognitionModel, setRecognitionModel] = useState(() => readPref('mudra.recognition_model_v2', 'intro_static'))
-  const selectedRecognitionModel = recognitionModels.find((model) => model.id === recognitionModel)
+  const [recognitionModels, setRecognitionModels] = useState([
+    { id: 'sequence', name: 'MUDRA word sequence' },
+    { id: 'intro_static', name: 'Expanded introduction (static pose)' },
+  ])
+  const [recognitionModel, setRecognitionModel] = useState(() => {
+    const saved = readPref('mudra.recognition_model_v3', 'sequence')
+    return saved === 'auto' ? 'sequence' : saved
+  })
+  const dynamicModels = recognitionModels.filter((model) => !['intro_static', 'top10_v2'].includes(model.id))
+  const effectiveRecognitionModel = dynamicModels.some((model) => model.id === recognitionModel) ? recognitionModel : 'sequence'
+  const selectedRecognitionModel = recognitionModels.find((model) => model.id === effectiveRecognitionModel)
   // Words the camera model knows, so people can check a word before signing it
   const [vocab, setVocab] = useState([])
   const { speechRate } = useAccessibility()
@@ -120,21 +150,39 @@ export default function CommunicatePage() {
     : ISL_VOCABULARY_LEXICON.filter((v) => RULE_SIGNS.includes(v.id))
   const [vocabOpen, setVocabOpen] = useState(false)
   const [referenceSign, setReferenceSign] = useState(null) // word whose training example is shown
-  // Words (trained word model, automatic) | Spell (fingerspelling letters) | Phrase (choose from top guesses)
+  // Dynamic words, held static poses, fingerspelling, phrases, or all three sign classifiers together.
   const [inputMode, setInputMode] = useState('words')
   const inputModeRef = useRef('words')
   const [libraryModels, setLibraryModels] = useState({})
+  const [autoResults, setAutoResults] = useState({})
+  const [confidenceFloor, setConfidenceFloor] = useState(() => Number(readPref('mudra.confidence_floor_v1', '0.65')) || 0.65)
+  const confidenceFloorRef = useRef(confidenceFloor)
+  confidenceFloorRef.current = confidenceFloor
+  const autoResultsRef = useRef({})
+  const autoChoiceTimerRef = useRef(null)
+  const autoCommittedRef = useRef(false)
+  const queueAutoCandidateRef = useRef(null)
+  const staticOnlineRef = useRef(false)
+  const [staticModelOnline, setStaticModelOnline] = useState(false)
   useEffect(() => { fetchLibrary().then((l) => setLibraryModels(l.models || {})) }, [])
   const changeInputMode = (mode) => {
     inputModeRef.current = mode
     setInputMode(mode)
+    setSentenceDraftTokens([])
     signRecognizer.reset() // drop a half-finished word segment
+    staticPoseRecognizer.reset()
+    autoResultsRef.current = {}
+    setAutoResults({})
+    autoCommittedRef.current = false
+    clearTimeout(autoChoiceTimerRef.current)
     setSuggestions([])
   }
   useEffect(() => {
-    signRecognizer.setModel(recognitionModel)
-    writePref('mudra.recognition_model_v2', recognitionModel)
-  }, [recognitionModel])
+    signRecognizer.setModel(effectiveRecognitionModel)
+    writePref('mudra.recognition_model_v3', recognitionModel)
+  }, [recognitionModel, effectiveRecognitionModel])
+  useEffect(() => writePref('mudra.confidence_floor_v1', confidenceFloor), [confidenceFloor])
+  useEffect(() => { letterSpeller.setConfidenceFloor(confidenceFloor) }, [confidenceFloor])
   useEffect(() => {
     if (modelState.status !== 'online') return
     let active = true
@@ -147,21 +195,21 @@ export default function CommunicatePage() {
         if (!active) return
         const models = payload.models || []
         setRecognitionModels(models)
-        if (!models.some((model) => model.id === recognitionModel)) {
-          const preferred = models.some((model) => model.id === 'intro_static') ? 'intro_static' : 'sequence'
-          setRecognitionModel(preferred)
+        const availableDynamic = models.filter((model) => !['intro_static', 'top10_v2'].includes(model.id))
+        if (!availableDynamic.some((model) => model.id === recognitionModel)) {
+          setRecognitionModel(availableDynamic.find((model) => model.id === 'sequence')?.id || availableDynamic[0]?.id || 'sequence')
         }
       })
       .catch((error) => console.warn('Could not load recognition model list:', error))
     return () => { active = false }
-  }, [modelState.status, recognitionModel])
+  }, [modelState.status])
   useEffect(() => {
     if (modelState.status !== 'online') return
-    fetch(`${API_BASE_URL}/labels?model=${encodeURIComponent(recognitionModel)}`)
+    fetch(`${API_BASE_URL}/labels?model=${encodeURIComponent(effectiveRecognitionModel)}`)
       .then((r) => r.json())
       .then((body) => setVocab(body.labels || []))
       .catch(() => setVocab([]))
-  }, [modelState.status, recognitionModel])
+  }, [modelState.status, effectiveRecognitionModel])
   const vocabMatches = vocabQuery.trim()
     ? vocab.filter((v) => v.label.toLowerCase().includes(vocabQuery.trim().toLowerCase()))
     : vocab
@@ -182,8 +230,9 @@ export default function CommunicatePage() {
 
   // Automatically keep constructed sentence synchronized with tokens and chosen language
   useEffect(() => {
-    setGeneratedSentence(buildMultilingualSentence(recognizedTokens, selectedLang))
-  }, [recognizedTokens, selectedLang])
+    const sentenceTokens = sentenceDraftTokens.length ? sentenceDraftTokens : recognizedTokens
+    setGeneratedSentence(buildMultilingualSentence(sentenceTokens, selectedLang))
+  }, [recognizedTokens, sentenceDraftTokens, selectedLang])
 
   useEffect(() => {
     sentenceRef.current = generatedSentence
@@ -197,17 +246,21 @@ export default function CommunicatePage() {
     }
   }, [autoSpeak])
 
+  useEffect(() => {
+    faceExpressionTracker.setBlinkAssist(blinkToAccept)
+  }, [blinkToAccept])
+
   // After each new word, wait for a pause (no new sign starting) and then speak the whole sentence once
   useEffect(() => {
     clearTimeout(autoSpeakTimerRef.current)
-    if (!autoSpeak || recognizedTokens.length === 0) return undefined
+    if (!autoSpeak || (recognizedTokens.length === 0 && sentenceDraftTokens.length === 0)) return undefined
     autoSpeakTimerRef.current = setTimeout(() => {
       const text = sentenceRef.current
       if (text && text !== lastSpokenRef.current) speakText(text)
     }, AUTO_SPEAK_PAUSE_MS)
     return () => clearTimeout(autoSpeakTimerRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recognizedTokens, autoSpeak])
+  }, [recognizedTokens, sentenceDraftTokens, autoSpeak])
 
   const replaceLastToken = useCallback((sign) => {
     setRecognizedTokens((prev) => (prev.length ? [...prev.slice(0, -1), sign] : [sign]))
@@ -217,6 +270,57 @@ export default function CommunicatePage() {
     setRecognizedTokens((prev) => (prev.length > 0 && prev[prev.length - 1] === sign ? prev : [...prev, sign]))
   }, [])
 
+  queueAutoCandidateRef.current = (kind, result) => {
+    const sign = kind === 'alphabet' ? result.letter : (result.sign || result.top_k?.[0]?.sign)
+    if (result.status !== 'ok' || !sign) return
+    const previous = autoResultsRef.current[kind]
+    if (autoCommittedRef.current) {
+      if (previous?.sign === sign) return
+      autoCommittedRef.current = false
+      autoResultsRef.current = {}
+    }
+    const label = kind === 'alphabet' ? sign : (result.label || result.top_k?.[0]?.label || readableSign(sign))
+    const confidence = Number(result.confidence || result.top_k?.[0]?.confidence || 0)
+    const candidate = { kind, sign, label, confidence, accepted: confidence >= confidenceFloorRef.current }
+    autoResultsRef.current = { ...autoResultsRef.current, [kind]: candidate }
+    setAutoResults(autoResultsRef.current)
+    if (previous?.sign === sign && previous.accepted === candidate.accepted) return
+    clearTimeout(autoChoiceTimerRef.current)
+    autoChoiceTimerRef.current = setTimeout(() => {
+      if (inputModeRef.current !== 'auto' || autoCommittedRef.current) return
+      const best = Object.values(autoResultsRef.current).filter((item) => item.accepted)
+        .sort((a, b) => b.confidence - a.confidence)[0]
+      if (!best) return
+      autoCommittedRef.current = true
+      setAutoResults({ ...autoResultsRef.current, winner: best })
+      setCurrentDetection({
+        sign: best.sign,
+        label: best.label,
+        confidence: Math.round(best.confidence * 100),
+        isUnknown: false,
+        status: 'ok',
+        source: `auto-${best.kind}`,
+        metadata: findISLLexiconItem(best.sign),
+      })
+      commitToken(best.sign)
+    }, 1400)
+  }
+
+  const acceptPredictedSign = (sign) => {
+    const context = sentenceDraftRef.current.length ? sentenceDraftRef.current : recognizedTokensRef.current
+    if (!nextWordSuggestions.includes(sign) || !context.length) return
+    setSentenceDraftTokens([...context, sign])
+    setBlinkAccepted(true)
+    setTimeout(() => setBlinkAccepted(false), 1200)
+  }
+  acceptPredictedSignRef.current = acceptPredictedSign
+
+  const addCurrentSignToSentence = () => {
+    const current = currentDetection.sign
+    if (!current || current === 'UNKNOWN') return
+    setSentenceDraftTokens((previous) => [...(previous.length ? previous : []), current])
+  }
+
   // Trained recognition model (backend /predict). Falls back to the rule engine when offline.
   useEffect(() => {
     signRecognizer.onStatusChange = (state) => {
@@ -225,25 +329,34 @@ export default function CommunicatePage() {
     }
     signRecognizer.onPrediction = (p) => {
       if (isPausedRef.current) return
+      if (inputModeRef.current === 'auto') {
+        queueAutoCandidateRef.current?.('dynamic', p)
+        return
+      }
       const top = p.top_k?.[0]
       // Fully automatic: a confident result is added; an unsure one is added too (its best guess) when the
-      // model gives it at least AUTO_ADD_MIN, with the runner-ups offered as optional one-tap replacements.
-      const confident = p.status === 'ok'
-      const unsure = p.model !== 'intro_static' && !confident && (p.status === 'uncertain' || p.status === 'no_sign') &&
-        (p.stats?.hand_rate ?? 1) >= 0.5 && top && top.confidence >= AUTO_ADD_MIN
+      // model clears the user-set confidence floor, with runner-ups offered as optional replacements.
+      const confidence = Number(p.confidence || top?.confidence || 0)
+      const confident = p.status === 'ok' && confidence >= confidenceFloorRef.current
+      const unsure = p.model !== 'intro_static' && !confident && (p.status === 'uncertain' || p.status === 'no_sign' || p.status === 'ok') &&
+        (p.stats?.hand_rate ?? 1) >= 0.5 && top && top.confidence >= confidenceFloorRef.current
       const added = confident ? { sign: p.sign, label: p.label } : unsure ? { sign: top.sign, label: top.label } : null
       setCurrentDetection({
         sign: added ? added.sign : 'UNKNOWN',
         label: added ? added.label : null,
         candidate: top ? top.label : null,
-        confidence: Math.round((confident ? p.confidence : top?.confidence ?? 0) * 100),
+        confidence: Math.round((confident ? confidence : top?.confidence ?? 0) * 100),
         isUnknown: !added,
         status: confident ? 'ok' : unsure ? 'unsure' : (p.stats?.hand_rate ?? 0) >= 0.5 ? 'missed' : p.status,
         source: p.custom ? 'custom' : 'model',
         metadata: added ? findISLLexiconItem(added.sign) : null
       })
       // The server classified one complete sign (start -> end), so each sign adds at most one word
-      if (added) commitToken(added.sign)
+      if (added) {
+        if (inputModeRef.current === 'words') {
+          setRecognizedTokens([added.sign])
+        } else commitToken(added.sign)
+      }
       // Unsure: the other likely words can replace the one just added (optional, nothing to click otherwise)
       setSuggestions(unsure ? (p.top_k || []).slice(1, 3) : [])
     }
@@ -254,6 +367,12 @@ export default function CommunicatePage() {
     signRecognizer.onActivity = (state) => {
       if (isPausedRef.current) return
       if (state === 'signing') {
+        if (inputModeRef.current === 'auto') {
+          autoResultsRef.current = {}
+          setAutoResults({})
+          autoCommittedRef.current = false
+          clearTimeout(autoChoiceTimerRef.current)
+        }
         clearTimeout(autoSpeakTimerRef.current) // still signing: the sentence is not finished
         setCurrentDetection({ sign: 'UNKNOWN', confidence: 0, isUnknown: true, status: 'signing', source: 'model', metadata: null })
       } else if (state === 'idle') {
@@ -263,15 +382,49 @@ export default function CommunicatePage() {
           : prev))
       }
     }
+    staticPoseRecognizer.setModel('intro_static')
+    staticPoseRecognizer.onStatusChange = ({ status }) => {
+      staticOnlineRef.current = status === 'online'
+      setStaticModelOnline(staticOnlineRef.current)
+    }
+    staticPoseRecognizer.onPrediction = (p) => {
+      if (isPausedRef.current) return
+      if (inputModeRef.current === 'auto') {
+        queueAutoCandidateRef.current?.('static', p)
+        return
+      }
+      if (inputModeRef.current !== 'static') return
+      const top = p.top_k?.[0]
+      const sign = p.status === 'ok' && Number(p.confidence || 0) >= confidenceFloorRef.current ? p.sign : null
+      setCurrentDetection({ sign: sign || 'UNKNOWN', label: sign ? (p.label || top?.label) : null,
+        candidate: top?.label || null, confidence: Math.round((p.confidence || 0) * 100),
+        isUnknown: !sign, status: sign ? 'ok' : p.status === 'ok' ? 'uncertain' : (p.status || 'missed'),
+        source: 'static', metadata: sign ? findISLLexiconItem(sign) : null })
+      if (sign) commitToken(sign)
+    }
     signRecognizer.connect()
+    staticPoseRecognizer.connect()
     return () => {
       signRecognizer.onPrediction = null
       signRecognizer.onActivity = null
       signRecognizer.onProvisional = null
       signRecognizer.onStatusChange = null
       signRecognizer.reset()
+      staticPoseRecognizer.onPrediction = null
+      staticPoseRecognizer.onStatusChange = null
+      staticPoseRecognizer.reset()
     }
   }, [commitToken])
+
+  useEffect(() => {
+    if (inputMode !== 'auto') return undefined
+    letterSpeller.onGuess = (result) => queueAutoCandidateRef.current?.('alphabet', result)
+    letterSpeller.start()
+    return () => {
+      letterSpeller.stop()
+      letterSpeller.onGuess = null
+    }
+  }, [inputMode])
 
   useEffect(() => {
     let active = true
@@ -303,11 +456,27 @@ export default function CommunicatePage() {
 
   const handleFaceResults = (result) => {
     const faceDetected = Boolean(result.faceLandmarks?.length)
+    faceLandmarksRef.current = result.faceLandmarks?.[0] || null
     const categories = result.faceBlendshapes?.[0]?.categories || []
+
+    const blendshapes = Object.fromEntries(categories.map(({ categoryName, score }) => [categoryName, score]))
+    const blinkLevel = ((blendshapes.eyeBlinkLeft || 0) + (blendshapes.eyeBlinkRight || 0)) / 2
+    if (blinkLevel >= 0.72) {
+      if (!blinkClosedRef.current && performance.now() - lastBlinkAtRef.current > 650) {
+        lastBlinkAtRef.current = performance.now()
+        if (blinkToAcceptRef.current && nextWordSuggestionsRef.current.length) {
+          acceptPredictedSignRef.current(nextWordSuggestionsRef.current[0])
+        }
+      }
+      blinkClosedRef.current = true
+    } else if (blinkLevel <= 0.28) {
+      blinkClosedRef.current = false
+    }
 
     if (!faceDetected) {
       expressionHistoryRef.current = []
       expressionPendingRef.current = { tone: null, count: 0 }
+      blinkClosedRef.current = false
       setFaceStatus('not-detected')
       setExpression(FACE_UNAVAILABLE_EXPRESSION)
       return
@@ -413,19 +582,32 @@ export default function CommunicatePage() {
     const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0
     updateFraming(results)
     if (results.fps) setTrackerFpsThrottled(results.fps, results.diag)
-    handTracker.drawPose(ctx, results.poseLandmarks, canvas.width, canvas.height, true)
-    if (hasHands) {
+    if (trackerVisibilityRef.current.body) handTracker.drawPose(ctx, results.poseLandmarks, canvas.width, canvas.height, mirroredRef.current)
+    if (trackerVisibilityRef.current.face) handTracker.drawFace(ctx, faceLandmarksRef.current, canvas.width, canvas.height, mirroredRef.current)
+    if (hasHands && trackerVisibilityRef.current.hands) {
       results.multiHandLandmarks.forEach((landmarks) => {
-        handTracker.drawSkeleton(ctx, landmarks, canvas.width, canvas.height, true)
+        handTracker.drawSkeleton(ctx, landmarks, canvas.width, canvas.height, mirroredRef.current)
       })
     }
+    if (hasHands && trackerVisibilityRef.current.palm) {
+      handTracker.drawPalmDirections(ctx, results.multiHandLandmarks, results.palmDirections,
+        canvas.width, canvas.height, mirroredRef.current)
+    }
 
-    // Spell / Phrase modes: frames go to the letter or phrase recogniser instead of the word stream
-    if (inputModeRef.current !== 'words') {
+    // Dedicated modes; Auto sends each landmark frame to all three sign classifiers.
+    if (inputModeRef.current === 'spell' || inputModeRef.current === 'phrase') {
       if (inputModeRef.current === 'spell') letterSpeller.addFrame(results)
       else phraseRecorder.addFrame(results)
       return
     }
+
+    if (inputModeRef.current === 'auto') letterSpeller.addFrame(results)
+
+    if ((inputModeRef.current === 'static' || inputModeRef.current === 'auto') && staticOnlineRef.current) {
+      staticPoseRecognizer.addFrame(results)
+    }
+
+    if (inputModeRef.current === 'static') return
 
     // Trained model path: stream landmarks; predictions arrive via signRecognizer.onPrediction
     if (modelOnlineRef.current) {
@@ -437,10 +619,17 @@ export default function CommunicatePage() {
         setCurrentDetection((prev) => (prev.status === 'no_hands' || prev.status === 'ok' ? prev : {
           sign: 'UNKNOWN', confidence: 0, isUnknown: true, status: 'no_hands', source: 'model', metadata: null
         }))
+        if (inputModeRef.current === 'auto' && autoCommittedRef.current) {
+          autoResultsRef.current = {}
+          setAutoResults({})
+          autoCommittedRef.current = false
+        }
       }
-      signRecognizer.addFrame(results)
+      if (inputModeRef.current === 'words' || inputModeRef.current === 'auto') signRecognizer.addFrame(results)
       return
     }
+
+    if (inputModeRef.current === 'auto') return
 
     // Offline fallback: rule-based hand-shape matching for 8 static signs
     if (hasHands) {
@@ -454,12 +643,7 @@ export default function CommunicatePage() {
           stableSignRef.current.count += 1
           if (stableSignRef.current.count >= 14) {
             if (lastCommittedSignRef.current !== classification.sign) {
-              setRecognizedTokens(prev => {
-                if (prev.length > 0 && prev[prev.length - 1] === classification.sign) {
-                  return prev; // Block consecutive duplicates from hand holds/jitters
-                }
-                return [...prev, classification.sign];
-              })
+              setRecognizedTokens([classification.sign])
               lastCommittedSignRef.current = classification.sign
             }
           }
@@ -491,6 +675,7 @@ export default function CommunicatePage() {
     setCameraLoading(true)
     setCameraError(null)
     setCameraIssue(null)
+    faceLandmarksRef.current = null
     try {
       if (videoRef.current) {
         await handTracker.startCamera(videoRef.current, handleMediaPipeResults, {
@@ -506,7 +691,7 @@ export default function CommunicatePage() {
       }
     } catch (err) {
       console.error('Camera startup failed:', err)
-      setCameraError(CAMERA_ERRORS[cameraErrorKind(err)])
+      setCameraError(cameraErrorMessage(err, CAMERA_ERRORS))
       setCameraActive(false)
     } finally {
       setCameraLoading(false)
@@ -515,6 +700,7 @@ export default function CommunicatePage() {
 
   const handleStopCamera = () => {
     handTracker.stopCamera()
+    faceLandmarksRef.current = null
     setCameraIssue(null)
     signRecognizer.reset()
     lastModelSignRef.current = null
@@ -566,6 +752,7 @@ export default function CommunicatePage() {
   const handleClearBuffer = () => {
     lastSpokenRef.current = ''
     setRecognizedTokens([])
+    setSentenceDraftTokens([])
     setGeneratedSentence('')
     lastCommittedSignRef.current = null
     stableSignRef.current = { sign: null, count: 0 }
@@ -727,12 +914,31 @@ export default function CommunicatePage() {
               
               <video
                 ref={videoRef}
-                className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 ${
+                className={`absolute inset-0 w-full h-full object-cover transform ${mirrored ? '-scale-x-100' : ''} ${
                   cameraActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}
                 playsInline
                 muted
               />
+
+              <div className="absolute left-3 right-3 top-3 z-20 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5 rounded-xl bg-black/55 p-1.5 backdrop-blur-sm" aria-label="Tracking overlays">
+                  {Object.entries({ hands: 'Hands', body: 'Body', face: 'Face', palm: 'Palm' }).map(([key, label]) => (
+                    <button key={key} type="button" aria-pressed={trackerVisibility[key]}
+                      onClick={() => setTrackerVisibility((current) => ({ ...current, [key]: !current[key] }))}
+                      className={`rounded-lg px-2 py-1 text-[11px] font-bold ${trackerVisibility[key] ? 'bg-white text-slate-900' : 'text-white/80 hover:bg-white/15'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setMirrored((current) => {
+                  const next = !current
+                  writePref('mudra_camera_mirrored', next)
+                  return next
+                })} className="inline-flex items-center gap-1.5 rounded-xl bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm" aria-pressed={mirrored}>
+                  <FlipHorizontal className="h-4 w-4" aria-hidden="true" /> {mirrored ? 'Mirrored' : 'Mirror'}
+                </button>
+              </div>
 
               <canvas
                 ref={canvasRef}
@@ -962,6 +1168,12 @@ export default function CommunicatePage() {
             <div className="glass-card rounded-3xl p-5 sm:p-6 border border-mudra-lavender-200/80 shadow-lg space-y-7">
               <InputModeSwitch mode={inputMode} onChange={changeInputMode} />
 
+              {inputMode === 'auto' && (
+                <div className="rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3 text-xs text-mudra-indigo-700">
+                  Auto streams the same tracked frames to the dynamic word, static pose and alphabet models together. It compares accepted guesses and uses the highest reported confidence after a short settling delay. Phrase recognition stays in its separate tab. The confidence values come from different model score scales, so treat the comparison as a live hint.
+                </div>
+              )}
+
               {inputMode === 'words' && (
                 <div className="space-y-2 rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3">
                   <label htmlFor="recognition-model" className="block text-xs font-bold text-mudra-indigo-700">
@@ -969,30 +1181,69 @@ export default function CommunicatePage() {
                     <select
                       id="recognition-model"
                       value={recognitionModel}
-                      disabled={modelState.status !== 'online'}
+                      disabled={modelState.status === 'checking'}
                       onChange={(event) => changeRecognitionModel(event.target.value)}
                       className="mt-1 min-h-10 w-full rounded-xl border border-mudra-lavender-300 bg-white px-3 text-sm font-semibold text-mudra-indigo-950 disabled:opacity-60"
                     >
-                      {recognitionModels.map((model) => (
+                      {dynamicModels.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.id === 'intro_static' ? 'Phone prototype · static pose (experimental)' : model.name}
+                          {model.name}
+                          {model.test_accuracy == null
+                            ? ' · accuracy not measured'
+                            : ` · ${(model.test_accuracy * 100).toFixed(1)}% ${model.accuracy_split || 'held-out test'}`}
                         </option>
                       ))}
-                      {recognitionModels.length === 0 && <option value={recognitionModel}>Loading recognition models…</option>}
                     </select>
                   </label>
-                  {recognitionModel === 'intro_static' && (
+                  <p className="text-[11px] leading-relaxed text-mudra-indigo-600">
+                    Scores are from each model’s listed held-out split. Live-webcam accuracy has not been measured.
+                  </p>
+                  {['common_word_video', 'isl500_video'].includes(effectiveRecognitionModel) && (
                     <p className="text-[11px] leading-relaxed text-amber-900">
-                      Experimental static-pose model: {selectedRecognitionModel?.live_words ?? 10} of
-                      {' '}{selectedRecognitionModel?.trained_words ?? 32} classes are live-eligible. It does not recognize motion.
-                      Alphabet mode continues to use the separate letter model.
+                      Experimental dynamic model; scores are from held-out signers and do not estimate webcam accuracy.
                     </p>
                   )}
                 </div>
               )}
 
+              {inputMode === 'static' && (
+                <div className="rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3 text-xs leading-relaxed text-mudra-indigo-700">
+                  Static pose model: hold a still sign shape for a moment. Its live-eligible classes are FOOD, HELP, I / ME / MINE, NICE, THANK, WHAT, YOU, DO, NAME and FROM. It does not classify motion or fingerspelling.
+                </div>
+              )}
+
+              {['words', 'static', 'spell', 'auto'].includes(inputMode) && (
+                <label htmlFor="confidence-floor" className="block rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3 text-xs text-mudra-indigo-700">
+                  <span className="flex items-center justify-between gap-3 font-bold">
+                    <span>Minimum confidence to accept</span><span className="font-mono">{Math.round(confidenceFloor * 100)}%</span>
+                  </span>
+                  <input id="confidence-floor" type="range" min="0.3" max="0.95" step="0.05" value={confidenceFloor}
+                    onChange={(event) => setConfidenceFloor(Number(event.target.value))}
+                    className="mt-2 w-full accent-mudra-indigo-700" />
+                  <span className="mt-1 block text-[11px]">Raise it to reject more guesses; lower it to accept more candidates. Each model’s confidence scale differs.</span>
+                </label>
+              )}
+
+              {inputMode === 'auto' && (
+                <div className="grid grid-cols-3 gap-2 text-xs" aria-live="polite">
+                  {[
+                    ['dynamic', 'Dynamic word'],
+                    ['static', 'Static pose'],
+                    ['alphabet', 'Alphabet'],
+                  ].map(([kind, label]) => {
+                    const result = autoResults[kind]
+                    return <div key={kind} className={`rounded-xl border p-2 ${autoResults.winner?.kind === kind ? 'border-emerald-500 bg-emerald-50' : 'border-mudra-lavender-200 bg-white/80'} ${result && !result.accepted ? 'opacity-60' : ''}`}>
+                      <p className="font-bold">{label}</p>
+                      <p className="mt-1 min-h-8 break-words">{result ? result.label : 'Waiting'}</p>
+                      <p className="font-mono text-mudra-indigo-500">{result ? `${Math.round(result.confidence * 100)}%` : '—'}</p>
+                      {result && !result.accepted && <p className="text-[10px]">Below minimum</p>}
+                    </div>
+                  })}
+                </div>
+              )}
+
               {inputMode === 'spell' ? (
-                <SpellPanel cameraActive={cameraActive} accuracy={libraryModels.letters}
+                <SpellPanel cameraActive={cameraActive} accuracy={libraryModels.letters} confidenceFloor={confidenceFloor}
                             onCommitWord={(word) => setRecognizedTokens((prev) => [...prev, word])} />
               ) : inputMode === 'phrase' ? (
                 <PhrasePanel cameraActive={cameraActive} accuracy={libraryModels.phrases}
@@ -1071,19 +1322,26 @@ export default function CommunicatePage() {
                   </div>
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono font-semibold ${
-                    modelState.status === 'online' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${modelState.status === 'online' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-                    {modelState.status === 'online'
-                      ? recognitionModel === 'intro_static'
-                        ? `Phone static-pose model · ${selectedRecognitionModel?.live_words ?? 10} live classes`
-                        : `Trained model · ${modelState.info?.num_signs ?? ''} words`
-                      : modelState.status === 'checking'
-                      ? 'Connecting to recognition model...'
-                      : 'Offline: rule-based fallback, 8 signs'}
-                  </span>
-                  {modelState.status !== 'online' && modelState.status !== 'checking' && (
+                  {(() => {
+                    const online = inputMode === 'static' ? staticModelOnline : inputMode === 'auto'
+                      ? modelState.status === 'online' && staticModelOnline
+                      : modelState.status === 'online'
+                    const label = inputMode === 'static'
+                      ? (online ? 'Static pose model · 10 live classes' : 'Static pose model offline')
+                      : inputMode === 'auto'
+                        ? (online ? 'Auto · dynamic, static and alphabet ready' : 'Auto · one or more models offline')
+                        : modelState.status === 'online'
+                          ? effectiveRecognitionModel === 'common_word_video'
+                            ? `Word-video model · ${selectedRecognitionModel?.live_words ?? 17} experimental classes`
+                            : effectiveRecognitionModel === 'isl500_video'
+                              ? `ISL500 video model · ${selectedRecognitionModel?.live_words ?? 14} experimental classes`
+                              : `Dynamic word model · ${modelState.info?.num_signs ?? ''} words`
+                          : modelState.status === 'checking' ? 'Connecting to recognition model...' : 'Offline: rule-based fallback, 8 signs'
+                    return <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono font-semibold ${online ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-amber-500'}`} />{label}
+                    </span>
+                  })()}
+                  {modelState.status !== 'online' && modelState.status !== 'checking' && inputMode !== 'static' && (
                     <button
                       type="button"
                       onClick={() => signRecognizer.connect()}
@@ -1106,7 +1364,7 @@ export default function CommunicatePage() {
                     Recognized
                   </span>
                   <span className="text-[10px] text-mudra-indigo-400 font-mono">
-                    {recognizedTokens.length} Tokens
+                    {inputMode === 'words' || inputMode === 'auto' ? 'Current word' : `${recognizedTokens.length} Tokens`}
                   </span>
                 </div>
 
@@ -1124,8 +1382,10 @@ export default function CommunicatePage() {
                     ))
                   ) : (
                     <span className="text-xs text-mudra-indigo-400 italic">
-                      {modelState.status === 'online'
-                        ? 'Sign a word, then lower your hands or hold them still for a moment; it is added when the sign ends'
+                        {modelState.status === 'online'
+                        ? ((inputMode === 'words' || inputMode === 'auto')
+                          ? `Sign a word, then lower your hands or hold them still; the current word updates and is spoken after ${AUTO_SPEAK_PAUSE_MS / 1000} seconds`
+                          : 'Sign a word to add it to the sequence')
                         : 'Hold a sign steady in camera to commit token'}
                     </span>
                   )}
@@ -1182,6 +1442,39 @@ export default function CommunicatePage() {
                     {generatedSentence ? `"${generatedSentence}"` : <span className="text-mudra-indigo-400 italic">No sentence generated yet</span>}
                   </div>
                 </div>
+                {(inputMode === 'words' || inputMode === 'auto') && recognizedTokens.length > 0 && (
+                  <div className="space-y-2 rounded-xl border border-mudra-lavender-200 bg-white/80 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-mudra-indigo-800">Next word suggestions</span>
+                      <button type="button" aria-pressed={blinkToAccept}
+                        onClick={() => setBlinkToAccept((enabled) => !enabled)}
+                        className={`min-h-9 rounded-lg border px-3 text-xs font-bold ${blinkToAccept ? 'border-emerald-600 bg-emerald-50 text-emerald-800' : 'border-mudra-lavender-300 text-mudra-indigo-700'}`}>
+                        {blinkToAccept ? 'Blink to accept: on' : 'Enable blink to accept'}
+                      </button>
+                    </div>
+                    {sentenceDraftTokens.length === 0 && (
+                      <button type="button" onClick={addCurrentSignToSentence}
+                        className="rounded-lg border border-mudra-lavender-300 px-3 py-1.5 text-xs font-semibold text-mudra-indigo-700 hover:bg-mudra-lavender-50">
+                        Add {readableSign(recognizedTokens[0])} as the first word
+                      </button>
+                    )}
+                    {nextWordSuggestions.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {nextWordSuggestions.map((sign) => (
+                          <button key={sign} type="button" onClick={() => acceptPredictedSign(sign)}
+                            className="min-h-10 rounded-lg bg-mudra-indigo-900 px-3 py-2 text-xs font-bold text-white hover:bg-mudra-indigo-700">
+                            + {readableSign(sign)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-mudra-indigo-500">No reviewed continuation for this word sequence yet. Suggestions come only from the local phrase templates.</p>
+                    )}
+                    <p aria-live="polite" className="text-[11px] text-mudra-indigo-500">
+                      {blinkAccepted ? 'Suggestion added to the sentence.' : blinkToAccept ? 'A blink accepts the first suggestion when one is available.' : 'Tap a suggestion, or enable blink acceptance.'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Non-manual (facial) cue layer — experimental, describes movement, not emotion */}

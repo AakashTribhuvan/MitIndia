@@ -551,6 +551,23 @@ const CANONICAL_SEQUENCE_DICTIONARY = {
 }
 
 /**
+ * Suggest the next ISL token only when a reviewed canonical sequence extends the
+ * supplied context. This is a deliberately small, local phrase trie: it never
+ * invents a word or grammar for an unseen sequence.
+ */
+export function predictNextSigns(tokens = []) {
+  const prefix = tokens.map((token) => String(token).toUpperCase().trim()).filter(Boolean)
+  if (!prefix.length) return []
+  const candidates = new Set()
+  for (const key of Object.keys(CANONICAL_SEQUENCE_DICTIONARY)) {
+    const sequence = key.split(',')
+    if (sequence.length <= prefix.length) continue
+    if (prefix.every((token, index) => sequence[index] === token)) candidates.add(sequence[prefix.length])
+  }
+  return [...candidates]
+}
+
+/**
  * Builds a natural-language sentence from committed ISL sign tokens.
  *
  * Rules:

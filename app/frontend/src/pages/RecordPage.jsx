@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Camera, CameraOff, Circle, CheckCircle2, AlertCircle, Trash2, Info, Users, Sparkles, Database } from 'lucide-react'
 import handTracker from '../services/handTracker'
+import faceExpressionTracker from '../services/faceExpressionTracker'
 import signRecognizer, { toFrame } from '../services/signRecognizer'
 import { listRecordings, saveRecording, deleteRecording } from '../services/recordingClient'
 
@@ -28,6 +29,7 @@ const QUALITY_MESSAGES = {
 export default function RecordPage() {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const faceLandmarksRef = useRef(null)
   const framesRef = useRef(null) // frames being captured, or null when not recording
   const sizeRef = useRef({ width: 640, height: 480 })
   const handsSeenRef = useRef(0)
@@ -68,7 +70,14 @@ export default function RecordPage() {
     }
   }, [signer])
 
-  useEffect(() => () => handTracker.stopCamera(), [])
+  useEffect(() => () => {
+    handTracker.stopCamera()
+    faceExpressionTracker.stop()
+  }, [])
+
+  const handleFaceResults = useCallback((result) => {
+    faceLandmarksRef.current = result.faceLandmarks?.[0] || null
+  }, [])
 
   const handleResults = useCallback((results) => {
     const canvas = canvasRef.current
@@ -76,7 +85,10 @@ export default function RecordPage() {
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       handTracker.drawPose(ctx, results.poseLandmarks, canvas.width, canvas.height, true)
+      handTracker.drawFace(ctx, faceLandmarksRef.current, canvas.width, canvas.height, true)
       ;(results.multiHandLandmarks || []).forEach((lm) => handTracker.drawSkeleton(ctx, lm, canvas.width, canvas.height, true))
+      handTracker.drawPalmDirections(ctx, results.multiHandLandmarks, results.palmDirections,
+        canvas.width, canvas.height, true)
     }
     sizeRef.current = { width: results.width || 640, height: results.height || 480 }
     const hasHands = (results.multiHandLandmarks || []).length > 0
@@ -87,9 +99,17 @@ export default function RecordPage() {
 
   const startCamera = async () => {
     setCameraError(null)
+    faceLandmarksRef.current = null
     try {
       await handTracker.startCamera(videoRef.current, handleResults)
       setCameraActive(true)
+      try {
+        await faceExpressionTracker.start(videoRef.current, handleFaceResults, (error) => {
+          console.warn('Face landmark tracking unavailable:', error)
+        })
+      } catch (error) {
+        console.warn('Face landmark tracking unavailable:', error)
+      }
     } catch (err) {
       setCameraError(err?.message || 'Could not start the camera.')
     }
@@ -97,6 +117,8 @@ export default function RecordPage() {
 
   const stopCamera = () => {
     handTracker.stopCamera()
+    faceExpressionTracker.stop()
+    faceLandmarksRef.current = null
     framesRef.current = null
     setPhase('idle')
     setCameraActive(false)

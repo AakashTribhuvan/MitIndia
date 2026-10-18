@@ -17,11 +17,24 @@ class FaceExpressionTracker {
     this.lastVideoTime = -1
     this.lastInferenceAt = 0
     this.targetFps = TARGET_FPS
+    this.slow = false
+    this.blinkAssist = false
   }
 
   /** Hands come first: run face cues at 1 fps while hand tracking is the bottleneck. */
   setSlow(slow) {
-    this.targetFps = slow ? SLOW_FPS : TARGET_FPS
+    this.slow = slow
+    this._updateTargetFps()
+  }
+
+  setBlinkAssist(enabled) {
+    this.blinkAssist = enabled
+    this._updateTargetFps()
+  }
+
+  _updateTargetFps() {
+    // Sample more often for short blinks only when it will not compete with slow hand tracking.
+    this.targetFps = this.slow ? SLOW_FPS : this.blinkAssist ? 10 : TARGET_FPS
   }
 
   async initialize() {
@@ -30,15 +43,24 @@ class FaceExpressionTracker {
 
     this.initializationPromise = (async () => {
       const vision = await FilesetResolver.forVisionTasks(WASM_PATH)
-      this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: MODEL_PATH,
-          delegate: 'GPU'
-        },
+      const options = {
+        baseOptions: { modelAssetPath: MODEL_PATH },
         runningMode: 'VIDEO',
         numFaces: 1,
+        minFaceDetectionConfidence: 0.2,
+        minFacePresenceConfidence: 0.2,
         outputFaceBlendshapes: true
-      })
+      }
+      try {
+        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+          ...options, baseOptions: { ...options.baseOptions, delegate: 'GPU' }
+        })
+      } catch (gpuError) {
+        console.warn('GPU face tracking unavailable; falling back to CPU:', gpuError)
+        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+          ...options, baseOptions: { ...options.baseOptions, delegate: 'CPU' }
+        })
+      }
       return this.landmarker
     })().catch((error) => {
       this.initializationPromise = null

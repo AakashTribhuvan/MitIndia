@@ -6,16 +6,16 @@
 
 | Field | Value |
 |---|---|
-| Document version | 9 |
+| Document version | 11 |
 | Last updated | 2026-10-18 |
-| Last updated at commit | Local, uncommitted deployment/docs update |
-| Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
+| Last updated at commit | Pending: static landmarks and learning references |
+| Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); experimental `isl500_video` (14 isolated words; signer-held-out 80.5% accuracy); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
 | Static words | Communication defaults to the 32-label phone-webcam model artifact. Its `/stream` adapter predicts each held static pose with a 450 ms stability hold, matching the phone prototype's recognition timing. The source model's exploratory held-out score was 13/73 (17.8%), not a live-camera estimate; only 10 labels have finite rejection thresholds. The v8 sequence and alphabet models remain unchanged. See `docs/STATIC_SIGN_GLOSSARY.md`. |
 | Public demo URL | [https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test](https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test). The Worker redirects to the active Quick Tunnel; it is not a permanent host for the local app. |
-| Public demo status | Rechecked 2026-10-18: landing page, `/health`, 314 `/labels`, `/model`, and secure `/stream` WebSocket all passed. `start_all.bat` now starts/reuses the API and frontend, then opens the Quick Tunnel/Worker launcher. Keep all service windows open. |
+| Public demo status | Rechecked 2026-10-18: `/models` returns `isl500_video` with 14 live words through the public Worker; landing page, `/health`, 314 `/labels`, `/model`, and secure `/stream` WebSocket also passed. `start_all.bat` starts/reuses the API and frontend, then opens the Quick Tunnel/Worker launcher. Keep all service windows open. |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
 | Tests | Current focused check: backend API 14 passed / 5 skipped; frontend 15 passed; static grouped-split tests 4 passed. |
-| Repository | `https://github.com/Addy-coder786/Mudra` (remote `mudra`); older pushes: `Addy-coder786/ISL_Addy` (remote `origin`) |
+| Repository | `https://github.com/AakashTribhuvan/MitIndia` (requested destination; feature branch `work/static-landmark-tracking`); earlier MUDRA history is recorded below |
 | Overall state | Recognition is accurate on new takes by **signers seen in training**; accuracy for new people is unmeasured (about 67% on unseen recording sessions); **live use on a real laptop webcam is not yet reliable** (Section 16). Audit: `docs/AUDIT_2026-10-13.md` |
 
 ---
@@ -140,6 +140,7 @@ build a sentence and speak it.
 | Accounts and roles | **Demo only** | no server accounts or passwords; role kept in the browser; anyone can open Admin (Section 16) |
 | Game Mode | Working (local) | 70 lessons over the 314 words, real recorded examples, quizzes, XP / streak / badges in localStorage; no leaderboard (needs accounts) |
 | Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13), **same signers and sessions as training** |
+| ISL500 14-word video pilot | Deployed experimentally | Selectable as `isl500_video` in Communication; 80.5% on 41 clips from 3 locked signers, not a live-webcam estimate |
 | Continuous-stream recognition (simulated live use) | Working in benchmark | 90-98% correct, 0-2.2% wrong on held-out streams |
 | Close-up laptop-webcam framing | Handled in benchmark | 90.0-90.6% correct (simulated close-up) |
 | New recording sessions / new people | Weak | 66.7% clip accuracy on unseen INCLUDE sessions |
@@ -169,7 +170,7 @@ build a sentence and speak it.
 │   │   ├── main.py             entry point (uvicorn; port from MUDRA_PORT, default 8000)
 │   │   ├── requirements.txt    pinned Python deps (backend + training share one venv; CUDA 12.8 torch)
 │   │   ├── mudra_api/
-│   │   │   ├── app.py          FastAPI factory: /health /labels /model /reference /predict /recordings /stream
+│   │   │   ├── app.py          FastAPI factory: /health /labels /model /models /reference /static-reference /predict /recordings /stream
 │   │   │   ├── settings.py     Settings dataclass from MUDRA_* environment variables
 │   │   │   ├── schemas.py      Pydantic models for /predict
 │   │   │   ├── recognizer.py   SignRecognizer: one-clip prediction for /predict; readable() labels
@@ -298,6 +299,12 @@ training and the benchmarks use, so offline results describe the live code path 
 **Offline fallback.** If `/health` is unreachable, Communicate falls back to the rule engine in
 `islClassifier.js` (8 static signs). The Practice page always uses the rule engine.
 
+**Camera startup errors.** Camera capture is local to the browser and requires HTTPS (or localhost)
+and site permission. If the UI reports an unknown startup failure, it now includes the browser or
+MediaPipe error name/message; use that detail to distinguish a camera permission/device problem
+from a hand-tracker model initialization problem. The Worker/API health checks do not verify the
+browser's camera access.
+
 ---
 
 ## 5. Live recognition: end-to-end data flow
@@ -400,9 +407,11 @@ available / Coming soon / Error), never colour alone.
 |---|---|---|
 | `GET /` | identity | `project`, `api_version`, `docs` |
 | `GET /health` | liveness | `status`, `model_loaded`, `model`, `num_signs` (excludes `_` classes), `device`, `error`, `custom_words` |
+| `GET /models` | runtime model selector | `models[]`: available backend model `id`, `name`, `trained_words`, `live_words`, `experimental`, and measured `test_accuracy` with split/sample metadata when present; includes optional static/video models only when local artifacts are installed |
 | `GET /labels` | vocabulary | `count`, `labels[]`: `sign`, `label` (readable), `has_reference`, `test_correct`, `test_clips` (from the model card) |
 | `GET /model` | model card minus stats/classes | card fields + `num_signs`, `active_threshold` |
-| `GET /reference/{sign}` | one real training example (also `LETTER_A`-`LETTER_Z`: a still hand shape as 15 identical frames, `kind: "letter"`; phrases: `kind: "phrase"`) | `sign`, `label`, `fps` (≤15), `width`, `height`, `frames[]`: `hands` [2 × (21×[x,y,z]) or null], `pose` (33×[x,y,z,vis] or null); 404 if none |
+| `GET /reference/{sign}` | one real training example (also `LETTER_A`-`LETTER_Z`: a still hand shape as 15 identical frames, `kind: "letter"`; phrases: `kind: "phrase"`; may use static reference landmarks when available) | `sign`, `label`, `fps` (≤15), `width`, `height`, `frames[]`: `hands` [2 × (21×[x,y,z]) or null], `pose` (33×[x,y,z,vis] or null); 404 if none |
+| `GET /static-reference/{sign}` | separately extracted static-pose skeleton example for Learning | landmark frames and static extraction metrics; 404 if that local reference artifact is not installed |
 | `POST /predict` | classify one pre-cut clip | request `PredictRequest`: `frames` (8-256) of `{hands:[{landmarks 21×3, handedness?, score}], pose: 33×3|4 or null}`, `width`, `height`, `mirrored`, `top_k` (1-10). Response: `status` (`ok`/`uncertain`/`no_hands`/`no_sign`), `sign`, `label`, `confidence`, `top_k[]`, `hand_rate`, `frames_received`, `threshold`, `model`, `inference_ms`. `no_hands` when < `MUDRA_MIN_HAND_RATE` (0.3) of frames show a hand; uses the model card threshold (0.85) |
 | `GET /library` | letters and phrases beyond `/labels` | `letters[]` / `phrases[]`: `sign` (`LETTER_A`…, phrase ids), `label`, `has_reference`; `models` (test top-1/top-3/top-5, thresholds) |
 | `POST /letters/predict` | fingerspelling letter from 1-30 frames (probabilities averaged) | request `{frames, width, height, top_k}` (frame format as `/predict`); response `status` (`ok`/`uncertain`/`no_hands`), `letter`, `sign`, `confidence`, `top_k[]` {`letter`, `sign`, `label`, `confidence`}, `frames_used` |
@@ -464,7 +473,7 @@ Backend environment variables (`app/backend/mudra_api/settings.py`, `main.py`), 
 | `MUDRA_PHRASES_MODEL_DIR` / `MUDRA_PHRASES_SPLIT` | `app/backend/models/isl_phrases_v1_bilstm` / `data/metadata/splits/phrases_v1/train.csv` | phrase model; split whose clips are phrase examples |
 | `MUDRA_REFERENCE_SPLIT` | `data/metadata/splits/combined_words_v3/train.csv` | where reference examples come from |
 
-Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:8000`),
+Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:8000`; Vite proxies `/models` and `/static-reference` to the API),
 `VITE_SIGN_MODEL=off` disables the model client. Frontend constants worth knowing:
 `CommunicatePage.jsx` (`AUTO_SPEAK_PAUSE_MS` 2500, `AUTO_ADD_MIN` 0.5, `LOW_FPS` 15, `FRAMING`),
 `RecordPage.jsx` (`SUGGESTED_WORDS`, `DURATIONS` 2-5 s, `COUNTDOWN_S` 3, `TARGET_PER_WORD` 5),
@@ -521,6 +530,21 @@ are padded so hands are never dropped.
 ---
 
 ## 8. The recognition model
+
+### Experimental isolated-word video pilot (`isl500_video`)
+
+- Optional local artifact: `data/processed/isl500_sentence_subset/model/isl500_word_model_v1.joblib`;
+  settings key `MUDRA_ISL500_VIDEO_MODEL`. It is loaded at backend startup and exposed in `/models`
+  only when present. It is selectable in Communication and does not replace the deployed 314-word model.
+- 14 classes from ISL500/ISL-DATA videos; 210 source clips from 15 signers, with one clip excluded
+  from evaluation due to no usable hand tracking. MediaPipe hands + pose feed the same 229D body/face/hand
+  frame features as the live static-top10 adapter; 12 active-span frames form a linear SVM descriptor.
+- Training-only mirror augmentation; Users 001-012 train, grouped 4-fold signer CV selects the model,
+  and Users 013-015 stay locked for final test. Final result: 33/41 (80.5%) top-1 clip accuracy,
+  macro-F1 0.794; grouped CV mean 86.9%. Three held-out clips per word (two for `I`) make these
+  per-class results highly uncertain. This is not live-webcam accuracy and gloss variants need ISL review.
+- This is a local/Quick-Tunnel experimental artifact, not committed in the repository (`data/processed/`
+  is ignored). A fresh clone must train or receive the artifact before the option can load.
 
 `mudra_ml/models/sequence_model.py` (`SequenceClassifier`, built by `build_model(ModelConfig)`):
 
@@ -586,6 +610,14 @@ threshold (or gap < margin) → `uncertain`; else `ok`.
 
 Settings were tuned with `eval_continuous.py --tune` (segmenter grid) and `--tune-threshold-only`
 on **validation** streams only.
+
+The Communication confidence floor is a user-adjustable client filter (default 0.65); changing it
+does not retrain or recalibrate the models. Auto mode sends the same tracked frames to the dynamic,
+static-pose and alphabet recognizers and selects among accepted candidates. Their confidence values
+come from different model families and are not calibrated to one another, so the selected result is
+not a validated cross-model probability. Phrase capture ends after 1.2 seconds without motion and
+keeps a short post-motion tail; this client-side boundary heuristic has not been measured against a
+phrase-boundary test set.
 
 ---
 
@@ -837,6 +869,13 @@ v8 is deployed; v6 is kept beside it for rollback until v8 is confirmed live (`5
 
 ## 16. Known issues and open problems
 
+Learning has separate Dynamic signs, Static poses, Alphabet, Phrases and Avatar sections. The static
+pose view animates tracked bone segments from `/reference/{sign}` or the local
+`/static-reference/{sign}` artifact. Extracted reference landmarks live under ignored
+`data/processed/`; they are not included in the GitHub push, so a fresh checkout needs those local
+reference artifacts to display skeleton examples. No new live-webcam accuracy was measured for the
+confidence filter, simultaneous Auto mode, or phrase-tail heuristic.
+
 ### Recommended next steps (2026-10-16, in order)
 
 1. **Live webcam test** (needs the owner, ~15 min): sign ~20 known words plus a few letters and phrases on
@@ -1053,6 +1092,26 @@ and `docs/STATIC_SIGN_GLOSSARY.md`.
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-18 · pending · static/dynamic learning, tracking and recognition updates
+- Added separate Learning sections for dynamic signs, static poses, alphabet and phrases; static
+  examples draw tracked hand/body bone segments. Added static-reference API support and reusable
+  public-data catalog/download/split/extraction/training scripts and configs. Training datasets,
+  videos, photos, extracted landmarks and generated experiment artifacts are excluded from this push.
+- Communication now exposes independent dynamic, static and alphabet modes plus an Auto mode that
+  runs all three; added a confidence floor control and motion-based phrase-tail trimming. The model
+  dropdown displays measured split labels where a saved evaluation report is available.
+- Fixed frontend model/static-reference routing and backend model startup/configuration paths.
+  No accuracy was newly measured for Auto selection, confidence filtering, phrase trimming or live
+  webcam performance. Existing results remain as recorded in Sections 2, 13 and 14.
+
+### 2026-10-18 · ISL500 video pilot served through the public demo (uncommitted)
+- Added the 14-word ISL500 video SVM as an experimental, selectable backend model. User 013-015 are held
+  out: 33/41 clips correct (80.5%, macro-F1 0.794); grouped 4-fold CV on training signers averaged
+  86.9%. The held-out set is only three clips per word (two for `I`), not a live-camera estimate.
+- Fixed Vite's missing `/models` proxy route. Without it the browser received the SPA HTML rather than
+  the backend model list, so the dropdown could not show optional models. Confirmed the public Worker
+  serves the pilot in `/models` after refreshing the frontend/tunnel stack.
 
 ### 2026-10-18 · local deployment recovery and accuracy clarification (uncommitted)
 - Rechecked the public Worker after it failed: the stored Quick Tunnel was stale (502) and the Vite

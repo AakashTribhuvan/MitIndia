@@ -18,13 +18,23 @@ MAX_FPS = 15.0
 
 
 class ReferenceClips:
-    def __init__(self, split_csv: Path, sources: tuple[str, ...] = PREFERRED_SOURCES):
+    def __init__(
+        self,
+        split_csv: Path,
+        sources: tuple[str, ...] = PREFERRED_SOURCES,
+        *,
+        quality_first: bool = False,
+    ):
         self.best: dict[str, object] = {}
         if Path(split_csv).exists():
             for r in read_manifest(Path(split_csv)):
                 if r.source not in sources or r.quality_flag or not Path(r.landmarks_path).exists():
                     continue
-                rank = (sources.index(r.source), -r.any_hand_rate)
+                rank = (
+                    (-r.any_hand_rate, sources.index(r.source))
+                    if quality_first
+                    else (sources.index(r.source), -r.any_hand_rate)
+                )
                 cur = self.best.get(r.label)
                 if cur is None or rank < cur[0]:
                     self.best[r.label] = (rank, r)
@@ -45,6 +55,12 @@ class ReferenceClips:
                     "hands": [np.round(seq.hands[i, h], 4).tolist() if seq.hand_present[i, h] else None for h in range(2)],
                     "pose": np.round(seq.pose[i], 4).tolist() if seq.pose_present[i] else None,
                 })
-            self._cache[sign] = {"sign": sign, "fps": fps / step, "width": int(seq.meta.get("width", 0)),
-                                 "height": int(seq.meta.get("height", 0)), "frames": frames}
+            self._cache[sign] = {
+                "sign": sign,
+                "source": row.source,
+                "fps": fps / step,
+                "width": int(seq.meta.get("width", 0)),
+                "height": int(seq.meta.get("height", 0)),
+                "frames": frames,
+            }
         return self._cache[sign]

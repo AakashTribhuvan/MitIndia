@@ -12,7 +12,7 @@
 export const API_BASE_URL = import.meta.env?.VITE_API_URL ||
   (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000')
 const MODE = import.meta.env?.VITE_SIGN_MODEL || 'auto'
-const DEFAULT_MODEL = 'intro_static'
+const DEFAULT_MODEL = 'sequence'
 const WS_URL = API_BASE_URL.replace(/^http/, 'ws') + '/stream'
 const HEALTH_TIMEOUT_MS = 2500
 
@@ -22,7 +22,8 @@ export function toFrame(results, t) {
   const hands = (results.multiHandLandmarks || []).map((landmarks, i) => ({
     landmarks: landmarks.map((p) => [round(p.x), round(p.y), round(p.z ?? 0)]),
     handedness: results.multiHandedness?.[i]?.label ?? null,
-    score: results.multiHandedness?.[i]?.score ?? 1
+    score: results.multiHandedness?.[i]?.score ?? 1,
+    palm_direction: results.palmDirections?.[i]?.map(round) ?? null
   }))
   const pose = results.poseLandmarks
     ? results.poseLandmarks.map((p) => [round(p.x), round(p.y), round(p.z ?? 0), round(p.visibility ?? 1)])
@@ -51,9 +52,7 @@ class SignRecognizer {
   }
 
   setModel(model) {
-    if (!['sequence', 'intro_static'].includes(model)) {
-      throw new Error(`Unknown recognition model: ${model}`)
-    }
+    if (typeof model !== 'string' || !/^[a-z0-9_]+$/.test(model)) throw new Error(`Unknown recognition model: ${model}`)
     if (this.model === model) return
     this.model = model
     this.reset()
@@ -132,4 +131,7 @@ class SignRecognizer {
 }
 
 export const signRecognizer = new SignRecognizer()
+// Auto mode and the Static tab keep a second server stream open so the dynamic and
+// still-pose classifiers can inspect the same tracked frames at the same time.
+export const staticPoseRecognizer = new SignRecognizer()
 export default signRecognizer

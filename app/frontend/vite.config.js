@@ -16,6 +16,7 @@ export default defineConfig({
       '/labels': 'http://127.0.0.1:8000',
       '/library': 'http://127.0.0.1:8000',
       '/letters': 'http://127.0.0.1:8000',
+      '^/models$': 'http://127.0.0.1:8000',
       '^/model$': 'http://127.0.0.1:8000',
       '/phrases': 'http://127.0.0.1:8000',
       '/predict': 'http://127.0.0.1:8000',

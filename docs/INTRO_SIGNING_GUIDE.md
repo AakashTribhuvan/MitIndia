@@ -44,6 +44,14 @@ signs. Spell the unsupported parts (such as K.S.E., FROM, THIS IS and LINE) lett
 phrase model has related whole-phrase classes such as `WHICH_COLLEGESCHOOL_ARE_YOU_FROM` and
 `NICE_TO_MEET_YOU`, but not the complete introduction as one trained phrase.
 
+An experimental **ISL500 video pilot** is also selectable in **Communication → Words → Word
+recognition model** when the local pilot artifact is installed. It has 14 labels:
+`FOOD`, `HELP`, `I`, `MYSELF`, `NICE`, `NO`, `THANKYOU`, `WATER`, `WHAT`, `YOU`, `HELLO`, `WE`,
+`STUDENT`, and `THIS`. It scored 80.5% accuracy / 0.79 macro-F1 on 41 clips from three signers
+kept out of training and model selection. That small clip test is not a live-webcam accuracy
+estimate; use it experimentally and check each result. `FROM`, `ARE`, `INVENTOR`, `PUNE`, and
+`SIGNLINE` are still not pilot labels.
+
 The separate static-image prototype includes `FROM` among its labels, but it is not connected to the
 live recognizer and should not be selected as a working camera model.
 

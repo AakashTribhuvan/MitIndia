@@ -22,6 +22,31 @@ MediaPipe models live in `training/assets/mediapipe/` (not committed). Download 
 
 ## Workflow
 
+### ISL500 video pilot (14 isolated words)
+
+The locally downloaded 15-signer subset is tracked with the same MediaPipe Pose/Hand pipeline as
+the live app. The feature vector includes fingers and palm geometry, hand position against the
+torso, pose anchors for eyes/ears/mouth, and hand-to-face distances. Landmark clips are saved by
+word under ignored `data/processed/isl500_sentence_subset/landmarks/` for later learning-page use.
+
+```powershell
+app\backend\.venv\Scripts\python.exe training\scripts\train_isl500_word_model.py prepare --workers 4 --max-fps 15
+app\backend\.venv\Scripts\python.exe training\scripts\train_isl500_word_model.py train
+```
+
+The split locks Users 013-015 for final testing. Classifier and temporal-window selection use
+four-fold grouped validation across Users 001-012; mirrored augmentation is applied only to each
+training fold. The current calibrated linear SVM scored 80.5% accuracy / 0.79 macro-F1 on 41
+clips from the three held-out signers (the `I` clip for User014 had no usable hand track and was
+excluded). This is a small signer-held-out clip result, not a live-webcam estimate. The model is
+saved to ignored `data/processed/isl500_sentence_subset/model/` and is available in the
+Communication word-model menu as **ISL500 video pilot** when that local artifact exists. It does
+not replace the deployed sequence model.
+
+Current labels: `FOOD`, `HELP`, `I`, `MYSELF`, `NICE`, `NO`, `THANKYOU`, `WATER`, `WHAT`, `YOU`,
+`HELLO`, `WE`, `STUDENT`, `THIS`. `I`, `MYSELF`, and `NO` are available dataset labels, not
+substitutes asserted to mean the unavailable `HOW`, `NOT`, or `I_ME_MINE_MY` glosses.
+
 ### Static still-image prototype
 
 The current local experiment uses the 32-label `intro` profile from
@@ -39,6 +64,57 @@ within train or test. Labels represented by only one source family have no held-
 The model card, confusion matrix, metrics and per-label counts are written by the training command;
 see `docs/STATIC_SIGN_GLOSSARY.md`. Do not adjust feature weights or thresholds based on the test
 set. The current small, unverified dataset is not enough to establish performance for every label.
+
+### Static image landmark tracking (no training)
+
+Track the source stills in the sibling `MudraPhoneWebcam/training_data/Frames_Word_Level/` before
+changing the model. This pass captures PoseLandmarker torso/arms plus its eye, ear and mouth anchors;
+FaceLandmarker eye/lip mesh (with an enlarged head-crop retry); HandLandmarker finger joints and
+world landmarks; and a 3D palm-plane normal. It does not alter the existing feature schema or model.
+
+```powershell
+app\backend\.venv\Scripts\python.exe training\scripts\track_static_images.py
+```
+
+Landmark arrays are written to ignored `data/processed/static_signs/tracked_landmarks_v1.npz`;
+coverage reports and annotated preview sheets are written under ignored
+`experiments/reports/static_signs/tracking/`. The source images and extracted landmarks are not
+committed. On the current source, 1,008 of 1,036 images had torso, face-region anchors, hands and
+palm direction; 93 classes had at least five such images. The full source has 131 folders, including
+17 empty folders. A strict 4-train/1-test split cannot be made for every folder without more usable
+images, and future splitting must keep near-duplicate image families together.
+
+Train the isolated ten-word prototype from the tracking archive:
+
+```powershell
+app\backend\.venv\Scripts\python.exe training\scripts\train_static_top10.py
+```
+
+The labels are YOU, I_ME_MINE_MY, WHAT, HELP, FOOD, WATER, HOW, NOT, NICE, and THANK, selected by
+complete tracked-image count; `COLLEGE_SCHOOL` is excluded because its folder mixes several glosses.
+Each selected label contributes exactly four train images and one test image from separate
+perceptual-hash groups. The nearest-neighbour model and split report stay under ignored local output
+folders and do not replace the deployed sequence or alphabet model. The Learning page can show the
+separately saved held-out landmarks for these words when the local artifact exists.
+
+For a less sample-starved comparison, run the v2 experiment:
+
+```powershell
+app\backend\.venv\Scripts\python.exe training\scripts\train_static_top10_v2.py
+```
+
+V2 uses all eligible tracked images (about 80% train / 20% held out per word), keeps pHash-near-
+duplicates in the same split, and compares nearest-centroid, 1/3-nearest-neighbour, linear SVM and
+RBF SVM using grouped cross-validation on training data. It selects by mean CV macro-F1, then scores
+the selected model once on the held-out set. In the current corpus, the selected RBF SVM achieved
+73.0% accuracy and 0.64 macro-F1 on 74 held-out images; performance varies sharply by word and this
+single-directory split does not establish signer-independent or live-camera accuracy. V2 artifacts
+are written to ignored `top10_v2` folders and do not replace the v1 result or deployed recognizer.
+When `data/processed/static_signs/top10_v2/static_top10_model_v2.joblib` exists locally, the backend
+loads it as an experimental live option and the Communicate page's **Word recognition model** menu can
+switch between it, the phone static prototype, and the deployed sequence recognizer without restarting.
+V2 uses a separate live feature adapter and a margin reject band; treat webcam behavior as experimental
+until it has been evaluated on recordings from different people and cameras.
 
 | Step | Command | Output |
 |---|---|---|

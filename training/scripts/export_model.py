@@ -29,7 +29,14 @@ from mudra_ml.datasets.isl_dataset import FeatureConfig, ISLLandmarkDataset
 from mudra_ml.evaluation.evaluate import load_checkpoint_model, predict
 from mudra_ml.evaluation.metrics import softmax
 
-def limitations(num_classes: int) -> list[str]:
+def limitations(num_classes: int, data_source: str = "combined") -> list[str]:
+    if data_source == "common_word_videos":
+        return [
+            f"This experimental vocabulary contains {num_classes} isolated words. Evaluation uses a small ISL500 signer-held-out test set; per-word supports are listed in per_word_test and are too small to estimate population accuracy reliably.",
+            "INCLUDE and CISLR supplementary clips were used only in training because their manifest fields do not provide verified signer identities. Their signer overlap with held-out ISL500 people is unknown, so complete signer independence across sources cannot be guaranteed.",
+            "ISL sign variants have not been reviewed by an ISL-fluent signer. The model learns source labels as provided; similar English glosses are not merged.",
+            "Trained on isolated signs. Live webcam/streaming performance has not been measured; use the model selector for a hands-on comparison.",
+        ]
     return [
         f"Vocabulary is {num_classes} classes (including _BACKGROUND_); MUDRA app words such as NAMASTE, WATER and HELP are not included.",
         "Test clips come from the same signers and recording sessions as training clips (no dataset has signer IDs): "
@@ -54,6 +61,12 @@ def phrase_limitations(num_classes: int) -> list[str]:
 
 
 DATA_SOURCES = {
+    "common_word_videos": {
+        "name": "Hugging Face isl-isolated-40words (selected accepted/unique samples)",
+        "pose_release": "Extracted locally with the same MediaPipe Tasks hand/pose pipeline as the webcam",
+        "license": "Mixed upstream terms; see data/external/isl_common_word_videos_v1/manifest.csv and README. ISL500 is research-use; INCLUDE is CC-BY-4.0; CISLR is non-commercial; excluded ISLRTC clips were not included.",
+        "attribution": "ISL500, INCLUDE, CISLR contributors; source URLs and clip-level metadata are in the local manifest.",
+    },
     "phrases": {
         "name": r"Sentence videos (101 phrases, 687 videos, C:\ISL\Videos_Sentence_Level)",
         "pose_release": "extracted locally with MediaPipe Tasks (same pipeline as the webcam)",
@@ -168,7 +181,8 @@ def main() -> None:
         "threshold_selection": threshold,
         "metrics": {"validation": summary["val"], "test": summary["test"], "test_samples": summary["test_samples"]},
         "data": DATA_SOURCES[args.data_source],
-        "limitations": (phrase_limitations if args.data_source == "phrases" else limitations)(len(ckpt["classes"])),
+        "limitations": phrase_limitations(len(ckpt["classes"])) if args.data_source == "phrases"
+        else limitations(len(ckpt["classes"]), args.data_source),
     }
     per_word = per_word_test_accuracy(run_dir, project_path(cfg["data"]["split_dir"]))
     if per_word:

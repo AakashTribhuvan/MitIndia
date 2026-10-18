@@ -40,6 +40,27 @@ class Settings:
             )
         )
     )
+    # Optional isolated SVM experiment; never replaces the deployed sequence model.
+    static_top10_model: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_STATIC_TOP10_MODEL",
+            BACKEND_DIR.parents[1] / "data" / "processed" / "static_signs" / "top10_v2" / "static_top10_model_v2.joblib",
+        ))
+    )
+    # Isolated-word video baseline; separate from the deployed model and selectable at runtime.
+    common_word_video_model_dir: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_COMMON_WORD_VIDEO_MODEL_DIR",
+            BACKEND_DIR.parents[1] / "data" / "processed" / "models" / "common_word_video_baseline",
+        ))
+    )
+    # Signer-held-out ISL500 temporal word pilot (local ignored artifact; opt-in in the model menu).
+    isl500_video_model: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_ISL500_VIDEO_MODEL",
+            BACKEND_DIR.parents[1] / "data" / "processed" / "isl500_sentence_subset" / "model" / "isl500_word_model_v1.joblib",
+        ))
+    )
     device: str = field(default_factory=lambda: os.getenv("MUDRA_DEVICE", "cpu"))
     cors_origins: list[str] = field(default_factory=_origins)
     # Overrides the validation-chosen threshold from the model card when set.
@@ -58,6 +79,13 @@ class Settings:
     # Training split whose clips are shown as "how to sign it" examples
     reference_split: Path = field(
         default_factory=lambda: Path(os.getenv("MUDRA_REFERENCE_SPLIT", BACKEND_DIR.parents[1] / "data" / "metadata" / "splits" / "combined_words_v3" / "train.csv"))
+    )
+    # Optional, separately extracted static-word landmarks used by the Learning reference view.
+    static_learning_landmarks: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_STATIC_LEARNING_LANDMARKS",
+            BACKEND_DIR.parents[1] / "data" / "processed" / "static_signs" / "top10_v1" / "static_top10_learning_v1.npz",
+        ))
     )
     # Signs recorded in the app (landmarks only): data/processed/landmarks/app + data/metadata/manifest_app.csv
     recordings_dir: Path = field(

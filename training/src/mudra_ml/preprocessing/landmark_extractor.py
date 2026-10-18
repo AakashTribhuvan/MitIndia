@@ -52,6 +52,10 @@ class LandmarkExtractor:
                 running_mode=running_mode,
                 num_hands=2,
                 min_hand_detection_confidence=self.min_hand_conf,
+                # Keep the tracker thresholds aligned. Leaving presence/tracking at MediaPipe's
+                # 0.5 defaults made small or fast hands disappear even when detection was set lower.
+                min_hand_presence_confidence=self.min_hand_conf,
+                min_tracking_confidence=self.min_hand_conf,
             )
         )
         pose = vision.PoseLandmarker.create_from_options(

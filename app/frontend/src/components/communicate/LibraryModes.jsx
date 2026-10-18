@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { CaseSensitive, Delete, Hand, MessagesSquare, Square, Video, X } from 'lucide-react'
+import { CaseSensitive, Delete, Hand, MessagesSquare, Sparkles, Square, Video, X } from 'lucide-react'
 import { PHRASE_MAX_SECONDS, letterSpeller, phraseRecorder } from '../../services/libraryClient'
 
 export const INPUT_MODES = [
-  { id: 'words', label: 'Words', icon: Hand },
-  { id: 'spell', label: 'Spell', icon: CaseSensitive },
+  { id: 'words', label: 'Dynamic', icon: Hand },
+  { id: 'static', label: 'Static', icon: Hand },
+  { id: 'spell', label: 'Alphabet', icon: CaseSensitive },
   { id: 'phrase', label: 'Phrase', icon: MessagesSquare },
+  { id: 'auto', label: 'Auto', icon: Sparkles },
 ]
 
 /** Words / Spell / Phrase switch for the Communicate page. */
 export function InputModeSwitch({ mode, onChange }) {
   return (
-    <div role="tablist" aria-label="What are you signing?" className="grid grid-cols-3 gap-1 rounded-full border-2 border-sl-ink bg-white p-1">
+    <div role="tablist" aria-label="What are you signing?" className="grid grid-cols-3 gap-1 rounded-2xl border-2 border-sl-ink bg-white p-1 sm:grid-cols-5">
       {INPUT_MODES.map(({ id, label, icon: Icon }) => (
         <button key={id} role="tab" type="button" aria-selected={mode === id} onClick={() => onChange(id)}
                 className={`flex min-h-10 items-center justify-center gap-1.5 rounded-full text-sm font-bold ${mode === id ? 'bg-sl-ink text-white' : 'text-sl-ink hover:bg-sl-cream-200'}`}>
@@ -26,13 +28,18 @@ export function InputModeSwitch({ mode, onChange }) {
  * Fingerspelling: letters are added when one hand shape is held steadily; the spelled word goes to the
  * sentence with "Add word". Recognition comes from the alphabet-photo model (see the accuracy note).
  */
-export function SpellPanel({ cameraActive, onCommitWord, accuracy }) {
+export function SpellPanel({ cameraActive, onCommitWord, accuracy, confidenceFloor = 0 }) {
   const [guess, setGuess] = useState(null)
   const [letters, setLetters] = useState('')
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    letterSpeller.onGuess = (r) => { setGuess(r); setError(null) }
+    letterSpeller.setConfidenceFloor(confidenceFloor)
+    letterSpeller.onGuess = (r) => {
+      const accepted = r.status === 'ok' && r.confidence >= confidenceFloor
+      setGuess({ ...r, status: accepted ? 'ok' : r.status === 'no_hands' ? 'no_hands' : 'uncertain', letter: accepted ? r.letter : null })
+      setError(null)
+    }
     letterSpeller.onLetter = (L) => setLetters((s) => (s + L).slice(0, 40))
     letterSpeller.onError = () => setError('The recognition server is not reachable.')
     letterSpeller.start()
@@ -40,7 +47,7 @@ export function SpellPanel({ cameraActive, onCommitWord, accuracy }) {
       letterSpeller.stop()
       letterSpeller.onGuess = letterSpeller.onLetter = letterSpeller.onError = null
     }
-  }, [])
+  }, [confidenceFloor])
 
   const top = guess?.top_k || []
   const commit = () => { if (letters) { onCommitWord(letters); setLetters('') } }
@@ -163,7 +170,7 @@ export function PhrasePanel({ cameraActive, onCommitPhrase, accuracy }) {
               <Square className="h-4 w-4" aria-hidden="true" /> Done
             </button>
           </div>
-          <p className="text-xs text-sl-ink-600">Sign the whole phrase once, then press Done (it stops by itself after {PHRASE_MAX_SECONDS} s).</p>
+          <p className="text-xs text-sl-ink-600">Sign the whole phrase once. It trims extra still frames after your hands settle; press Done sooner if you prefer. Maximum {PHRASE_MAX_SECONDS} s.</p>
         </div>
       ) : (
         <p className="flex min-h-12 items-center rounded-sl border-2 border-sl-ink bg-white px-4 font-bold">Checking…</p>

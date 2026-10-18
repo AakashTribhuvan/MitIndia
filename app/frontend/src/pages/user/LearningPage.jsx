@@ -10,10 +10,11 @@ import { useGameProgress } from '../../features/game/useGameProgress'
 import { useVocabulary } from '../../features/vocabulary'
 import LearnPage from '../LearnPage'
 
-const UNITS = FULL_CURRICULUM.flatMap((s) => s.units.map((u) => ({ ...u, section: s.title })))
+const UNITS = FULL_CURRICULUM.flatMap((s) => s.units.map((u) => ({ ...u, section: s.title, track: s.track })))
 const LESSON_OF = Object.fromEntries(LESSONS.flatMap((l) => l.words.map((w) => [w, l])))
+const STATIC_TRACKING_SIGNS = ['YOU', 'I_ME_MINE_MY', 'WHAT', 'HELP', 'FOOD', 'WATER', 'HOW', 'NOT', 'NICE', 'THANK']
 
-function WordLibrary() {
+function WordLibrary({ track = 'words' }) {
   const vocab = useVocabulary()
   const { progress } = useGameProgress()
   const [query, setQuery] = useState('')
@@ -23,16 +24,16 @@ function WordLibrary() {
 
   const words = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return UNITS.filter((u) => unit === 'all' || u.id === unit)
+    return UNITS.filter((u) => u.track === track && (unit === 'all' || u.id === unit))
       .flatMap((u) => u.lessons.flat().map((w) => ({ sign: w, unit: u })))
       .filter((w) => !q || vocab.label(w.sign).toLowerCase().includes(q))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, unit, vocab.status])
+  }, [query, unit, vocab.status, track])
 
   const openInfo = open ? vocab.entry(open) : null
 
   return (
-    <section aria-label="Word library" className="space-y-5">
+    <section aria-label={`${track} library`} className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row">
         <label className="relative flex-1">
           <span className="sr-only">Search words, letters and phrases</span>
@@ -103,34 +104,53 @@ function WordLibrary() {
           )}
         </aside>
       </div>
+
     </section>
   )
 }
 
 export default function LearningPage(props) {
-  const [tab, setTab] = useState('library')
+  const [tab, setTab] = useState('words')
+  const [staticSign, setStaticSign] = useState('YOU')
   return (
     <div>
       <div className="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 lg:pt-10">
         <header>
           <p className="text-sm font-bold uppercase tracking-wider text-sl-green-700">Learning</p>
           <h1 className="font-display text-4xl font-extrabold tracking-tight">Learn ISL words, letters and phrases</h1>
-          <p className="mt-2 max-w-2xl text-sl-ink-600">
-            Every word SignLine recognises, the fingerspelling alphabet and everyday phrases, each with a real recorded example.
+        <p className="mt-2 max-w-2xl text-sl-ink-600">
+            Learn dynamic signs, still hand poses, fingerspelling and phrases in separate sections, with tracked examples where available.
             For a guided path with quizzes, use Game Mode.
           </p>
         </header>
-        <div role="tablist" aria-label="Learning sections" className="inline-flex rounded-full border-2 border-sl-ink bg-white p-1">
-          {[['library', 'Sign library'], ['avatar', 'Avatar studio']].map(([id, text]) => (
+        <div role="tablist" aria-label="Learning sections" className="flex flex-wrap gap-1 rounded-2xl border-2 border-sl-ink bg-white p-1">
+          {[['words', 'Dynamic signs'], ['static', 'Static poses'], ['alphabet', 'Alphabet'], ['phrases', 'Phrases'], ['avatar', 'Avatar studio']].map(([id, text]) => (
             <button key={id} role="tab" type="button" aria-selected={tab === id} onClick={() => setTab(id)}
-                    className={`min-h-10 rounded-full px-5 text-sm font-bold ${tab === id ? 'bg-sl-ink text-white' : 'text-sl-ink'}`}>
+                    className={`min-h-10 rounded-full px-4 text-sm font-bold ${tab === id ? 'bg-sl-ink text-white' : 'text-sl-ink'}`}>
               {text}
             </button>
           ))}
         </div>
       </div>
-      {tab === 'library' ? (
-        <div className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 lg:pb-16"><WordLibrary /></div>
+      {['words', 'alphabet', 'phrases'].includes(tab) ? (
+        <div className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 lg:pb-16"><WordLibrary track={tab} /></div>
+      ) : tab === 'static' ? (
+        <div className="mx-auto max-w-6xl space-y-4 px-4 py-6 pb-24 sm:px-6 lg:pb-16">
+          <Card className="space-y-2 p-5">
+            <h2 className="font-display text-2xl font-extrabold">Static pose signs</h2>
+            <p className="text-sm text-sl-ink-600">Hold the handshape and body position steady. These tracked skeletons show the target pose; they are examples, not a guarantee of live accuracy.</p>
+            <div className="flex flex-wrap gap-2">
+              {STATIC_TRACKING_SIGNS.map((sign) => (
+                <button key={sign} type="button" aria-pressed={staticSign === sign} onClick={() => setStaticSign(sign)}
+                        className={`rounded-full border-2 px-3 py-2 text-sm font-bold ${staticSign === sign ? 'border-sl-ink bg-sl-green-100' : 'border-sl-ink-200 bg-white'}`}>
+                  {sign.replaceAll('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </Card>
+          <Card className="max-w-md p-4"><SignReference key={`static-${staticSign}`} sign={staticSign} staticPose /></Card>
+          <p className="text-xs text-sl-ink-600">The current static tracker has examples for FOOD, YOU, I / ME / MINE, WHAT, HELP, WATER, HOW, NOT, NICE and THANK. Its live class coverage is narrower than the dynamic word model.</p>
+        </div>
       ) : (
         <div>
           <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">

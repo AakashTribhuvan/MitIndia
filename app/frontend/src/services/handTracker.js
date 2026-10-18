@@ -12,7 +12,7 @@
  *   diag                {cameraFps, trackingFps, inferenceMs, delegate}: what limits the frame rate
  */
 
-import { FilesetResolver, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision'
+import { FaceLandmarker, FilesetResolver, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision'
 
 const WASM_PATH = '/wasm'
 const HAND_MODEL = '/models/hand_landmarker.task'
@@ -72,10 +72,20 @@ export function cameraErrorKind(error) {
   }
 }
 
+export function cameraErrorMessage(error, messages) {
+  const kind = cameraErrorKind(error)
+  const message = messages[kind]
+  if (kind !== 'unknown') return message
+
+  const detail = [error?.name, error?.message].filter(Boolean).join(': ').slice(0, 200)
+  return detail ? `${message} (${detail})` : message
+}
+
 const BLACK_LUMA = 8 // mean brightness (0-255) below which a frame counts as black
 const FROZEN_S = 3 // no new video frame for this long = frozen feed
 // Damp landmark jitter before drawing or sending a frame to the recognizer.
 const LANDMARK_CURRENT_WEIGHT = 0.55
+const POSE_TRACK_POINTS = [2, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 23, 24]
 
 function smoothPoint(previous, current) {
   return {
@@ -89,6 +99,26 @@ function smoothPoint(previous, current) {
 function smoothLandmarks(previous, current) {
   if (!previous || previous.length !== current.length) return current.map((point) => ({ ...point }))
   return current.map((point, index) => smoothPoint(previous[index], point))
+}
+
+function palmNormal(worldLandmarks, handedness) {
+  if (!worldLandmarks || worldLandmarks.length < 18) return null
+  const wrist = worldLandmarks[0]
+  const index = worldLandmarks[5]
+  const pinky = worldLandmarks[17]
+  const a = [index.x - wrist.x, index.y - wrist.y, index.z - wrist.z]
+  const b = [pinky.x - wrist.x, pinky.y - wrist.y, pinky.z - wrist.z]
+  const normal = [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0]
+  ]
+  const length = Math.hypot(...normal)
+  if (length <= 1e-8) return null
+  // The index-to-pinky winding reverses between anatomical hands. Canonicalize that
+  // winding so equal palm poses do not look like opposite directions on the right hand.
+  const sideSign = handedness === 'Right' ? -1 : 1
+  return normal.map((value) => value / length * sideSign)
 }
 
 class HandTrackerService {
@@ -110,6 +140,7 @@ class HandTrackerService {
     this.onIssueCallback = null // called with 'black' | 'frozen' | null when the feed's health changes
     this.issue = null
     this.smoothedHands = new Map()
+    this.smoothedWorldHands = new Map()
     this.smoothedPose = null
   }
 
@@ -201,6 +232,7 @@ class HandTrackerService {
 
     this.isTracking = true
     this.smoothedHands.clear()
+    this.smoothedWorldHands.clear()
     this.smoothedPose = null
     this.lastVideoTime = -1
     this._countCameraFrames()
@@ -293,11 +325,20 @@ class HandTrackerService {
         this.lastFrameAt = timestamp
         if (dt > 0) this.fps = ema(this.fps, 1 / dt)
         const rawHands = hands.landmarks || []
+        const rawWorldHands = hands.worldLandmarks || []
         const handedness = (hands.handedness || hands.handednesses || []).map((categories) => ({
             label: categories?.[0]?.categoryName,
             score: categories?.[0]?.score ?? 0
           }))
         const currentHandKeys = new Set()
+        const multiHandWorldLandmarks = rawHands.map((_, index) => {
+          const key = handedness[index]?.label || `hand-${index}`
+          const world = rawWorldHands[index]
+          if (!world) return null
+          const smoothed = smoothLandmarks(this.smoothedWorldHands.get(key), world)
+          this.smoothedWorldHands.set(key, smoothed)
+          return smoothed
+        })
         const multiHandLandmarks = rawHands.map((landmarks, index) => {
           const key = handedness[index]?.label || `hand-${index}`
           currentHandKeys.add(key)
@@ -308,10 +349,15 @@ class HandTrackerService {
         for (const key of this.smoothedHands.keys()) {
           if (!currentHandKeys.has(key)) this.smoothedHands.delete(key)
         }
+        for (const key of this.smoothedWorldHands.keys()) {
+          if (!currentHandKeys.has(key)) this.smoothedWorldHands.delete(key)
+        }
         const rawPose = pose.landmarks?.[0] || null
         this.smoothedPose = rawPose ? smoothLandmarks(this.smoothedPose, rawPose) : null
         this.onResultsCallback?.({
           multiHandLandmarks,
+          multiHandWorldLandmarks,
+          palmDirections: multiHandWorldLandmarks.map((hand, index) => palmNormal(hand, handedness[index]?.label)),
           multiHandedness: handedness,
           poseLandmarks: this.smoothedPose,
           width: video.videoWidth,
@@ -344,6 +390,7 @@ class HandTrackerService {
     this.issue = null
     this.lastPose = null
     this.smoothedHands.clear()
+    this.smoothedWorldHands.clear()
     this.smoothedPose = null
     this.lastFrameAt = 0
     this.fps = 0
@@ -387,6 +434,82 @@ class HandTrackerService {
       ctx.moveTo(p1.x * width, p1.y * height)
       ctx.lineTo(p2.x * width, p2.y * height)
       ctx.stroke()
+    })
+    POSE_TRACK_POINTS.forEach((index) => {
+      const point = poseLandmarks[index]
+      if (!point || (point.visibility ?? 1) < 0.35) return
+      ctx.beginPath()
+      ctx.arc(point.x * width, point.y * height, [11, 12, 23, 24].includes(index) ? 2.5 : 1.8, 0, 2 * Math.PI)
+      ctx.fillStyle = [7, 8].includes(index) ? '#60A5FA'
+        : [2, 5, 9, 10].includes(index) ? '#F472B6' : '#FDE047'
+      ctx.fill()
+    })
+    ctx.restore()
+  }
+
+  /** Draw detailed eye and lip contours from FaceLandmarker; ears come from PoseLandmarker. */
+  drawFace(ctx, faceLandmarks, width, height, mirror = true) {
+    if (!ctx || !faceLandmarks?.length) return
+    ctx.save()
+    if (mirror) {
+      ctx.translate(width, 0)
+      ctx.scale(-1, 1)
+    }
+    ctx.strokeStyle = 'rgba(244, 114, 182, 0.72)'
+    ctx.lineWidth = 1.1
+    FaceLandmarker.FACE_LANDMARKS_CONTOURS.forEach(({ start, end }) => {
+      const first = faceLandmarks[start]
+      const second = faceLandmarks[end]
+      if (!first || !second) return
+      ctx.beginPath()
+      ctx.moveTo(first.x * width, first.y * height)
+      ctx.lineTo(second.x * width, second.y * height)
+      ctx.stroke()
+    })
+    ctx.restore()
+  }
+
+  /** Show a projected cue for the palm-plane normal estimated from world hand landmarks. */
+  drawPalmDirections(ctx, hands, directions, width, height, mirror = true) {
+    if (!ctx || !hands?.length || !directions?.length) return
+    ctx.save()
+    if (mirror) {
+      ctx.translate(width, 0)
+      ctx.scale(-1, 1)
+    }
+    directions.forEach((normal, index) => {
+      const hand = hands[index]
+      if (!normal || !hand || Math.hypot(...normal) < 0.1) return
+      const origin = {
+        x: (hand[0].x + (hand[5].x + hand[17].x) / 2) * width / 2,
+        y: (hand[0].y + (hand[5].y + hand[17].y) / 2) * height / 2
+      }
+      const planarLength = Math.hypot(normal[0], normal[1])
+      ctx.strokeStyle = '#F43F5E'
+      ctx.fillStyle = '#F43F5E'
+      ctx.lineWidth = 3
+      if (planarLength >= 0.08) {
+        const endX = origin.x + normal[0] / planarLength * 34
+        const endY = origin.y - normal[1] / planarLength * 34
+        ctx.beginPath()
+        ctx.moveTo(origin.x, origin.y)
+        ctx.lineTo(endX, endY)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(endX, endY, 4, 0, 2 * Math.PI)
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.arc(origin.x, origin.y, 8, 0, 2 * Math.PI)
+        ctx.fill()
+      }
+      ctx.font = '10px sans-serif'
+      ctx.fillStyle = '#FFFFFF'
+      ctx.lineWidth = 2
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)'
+      const directionLabel = `palm n=(${normal.map((value) => value.toFixed(1)).join(',')})`
+      ctx.strokeText(directionLabel, origin.x + 5, origin.y + 15)
+      ctx.fillText(directionLabel, origin.x + 5, origin.y + 15)
     })
     ctx.restore()
   }
@@ -440,7 +563,7 @@ class HandTrackerService {
 
       // Outer soft glow aura
       ctx.beginPath()
-      ctx.arc(x, y, isFingertip ? 7 : isWrist ? 6 : 4.5, 0, 2 * Math.PI)
+      ctx.arc(x, y, isFingertip ? 3.5 : isWrist ? 3 : 2.4, 0, 2 * Math.PI)
       ctx.fillStyle = isFingertip
         ? 'rgba(249, 115, 22, 0.35)'
         : 'rgba(139, 92, 246, 0.25)'
@@ -448,10 +571,10 @@ class HandTrackerService {
 
       // Inner solid node
       ctx.beginPath()
-      ctx.arc(x, y, isFingertip ? 4.5 : isWrist ? 4 : 3, 0, 2 * Math.PI)
+      ctx.arc(x, y, isFingertip ? 2.4 : isWrist ? 2 : 1.6, 0, 2 * Math.PI)
       ctx.fillStyle = isFingertip ? '#F97316' : '#8B5CF6'
       ctx.strokeStyle = '#FFFFFF'
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = 0.9
       ctx.fill()
       ctx.stroke()
     })

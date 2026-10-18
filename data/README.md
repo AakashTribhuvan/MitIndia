@@ -43,6 +43,7 @@ independent validation.
 | INCLUDE pose release (AI4Bharat OpenHands, Zenodo 6674324, CC-BY-4.0) | `manifest_include.csv` | 4,292 | 263 | download to `data/external/include_pose`, then `convert_include_pose.py --variant include` |
 | INCLUDE original videos (Zenodo 4010759, CC-BY-4.0; 10 of 15 categories) | `manifest_include_video.csv` | 2,795 | 181 | unzip to `data/raw/include_video`, then `extract_landmarks.py --source include_video --input data/raw/include_video` |
 | Team word recordings (MUDRA team; licence to be confirmed) | `manifest_islwords.csv` | 1,210 | 61 | `extract_landmarks.py --source islwords --input <Video_Dataset folder> --group-strip "_(left\|right)_tilt$"` |
+| ISL500 14-word pilot (15 signers; academic/research terms) | `manifest_isl500_sentence_subset.csv` | 210 | 14 | `train_isl500_word_model.py prepare` then `train_isl500_word_model.py train`; raw videos are local under `data/external/isl500_sentence_subset/` |
 | Signs recorded in the app | `manifest_app.csv` (not committed: holds recorders' names) | | | written by the backend's Record page |
 
 Sample IDs are a hash of the source name and the file's path inside the source folder, so

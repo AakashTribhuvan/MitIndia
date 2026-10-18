@@ -63,6 +63,9 @@ def test_health_and_labels(client):
     assert entry["label"] == "Good morning" and isinstance(entry["has_reference"], bool)
     card = client.get("/model").json()
     assert "feature_mean" not in card and card["active_threshold"] > 0
+    models = {model["id"]: model for model in client.get("/models").json()["models"]}
+    assert models["sequence"]["test_accuracy"] == pytest.approx(card["metrics"]["test"]["accuracy"])
+    assert models["sequence"]["accuracy_samples"] == card["metrics"]["test_samples"]
 
 
 def test_predicts_held_out_test_clips(client):
