@@ -8,7 +8,7 @@
 |---|---|
 | Document version | 11 |
 | Last updated | 2026-10-18 |
-| Last updated at commit | Pending: static landmarks and learning references |
+| Last updated at commit | `4a145a8` (feature changes; this handover update follows) |
 | Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); experimental `isl500_video` (14 isolated words; signer-held-out 80.5% accuracy); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
 | Static words | Communication defaults to the 32-label phone-webcam model artifact. Its `/stream` adapter predicts each held static pose with a 450 ms stability hold, matching the phone prototype's recognition timing. The source model's exploratory held-out score was 13/73 (17.8%), not a live-camera estimate; only 10 labels have finite rejection thresholds. The v8 sequence and alphabet models remain unchanged. See `docs/STATIC_SIGN_GLOSSARY.md`. |
 | Public demo URL | [https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test](https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test). The Worker redirects to the active Quick Tunnel; it is not a permanent host for the local app. |
@@ -1093,7 +1093,7 @@ and `docs/STATIC_SIGN_GLOSSARY.md`.
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
 
-### 2026-10-18 · pending · static/dynamic learning, tracking and recognition updates
+### 2026-10-18 · `4a145a8` · static/dynamic learning, tracking and recognition updates
 - Added separate Learning sections for dynamic signs, static poses, alphabet and phrases; static
   examples draw tracked hand/body bone segments. Added static-reference API support and reusable
   public-data catalog/download/split/extraction/training scripts and configs. Training datasets,
@@ -1105,7 +1105,7 @@ Add one entry per push: date · commits · what changed · why · measured effec
   No accuracy was newly measured for Auto selection, confidence filtering, phrase trimming or live
   webcam performance. Existing results remain as recorded in Sections 2, 13 and 14.
 
-### 2026-10-18 · ISL500 video pilot served through the public demo (uncommitted)
+### 2026-10-18 · ISL500 video pilot served through the public demo
 - Added the 14-word ISL500 video SVM as an experimental, selectable backend model. User 013-015 are held
   out: 33/41 clips correct (80.5%, macro-F1 0.794); grouped 4-fold CV on training signers averaged
   86.9%. The held-out set is only three clips per word (two for `I`), not a live-camera estimate.
@@ -1113,7 +1113,7 @@ Add one entry per push: date · commits · what changed · why · measured effec
   the backend model list, so the dropdown could not show optional models. Confirmed the public Worker
   serves the pilot in `/models` after refreshing the frontend/tunnel stack.
 
-### 2026-10-18 · local deployment recovery and accuracy clarification (uncommitted)
+### 2026-10-18 · local deployment recovery and accuracy clarification
 - Rechecked the public Worker after it failed: the stored Quick Tunnel was stale (502) and the Vite
   frontend had stopped; the local backend was still healthy. Restarted Vite and the Quick Tunnel and
   re-registered the Worker. Verified `/model-test`, `/health` (`model_loaded=true`, 314 signs),
