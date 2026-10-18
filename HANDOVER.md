@@ -6,12 +6,15 @@
 
 | Field | Value |
 |---|---|
-| Document version | 8 |
-| Last updated | 2026-10-16 (system date; the previous entry was dated 10-17 although its commit b5e2da8 is of 2026-10-16) |
-| Last updated at commit | docs update after `08dd74f` (Section 21) |
+| Document version | 9 |
+| Last updated | 2026-10-18 |
+| Last updated at commit | Local, uncommitted deployment/docs update |
 | Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
+| Static words | Communication defaults to the 32-label phone-webcam model artifact. Its `/stream` adapter predicts each held static pose with a 450 ms stability hold, matching the phone prototype's recognition timing. The source model's exploratory held-out score was 13/73 (17.8%), not a live-camera estimate; only 10 labels have finite rejection thresholds. The v8 sequence and alphabet models remain unchanged. See `docs/STATIC_SIGN_GLOSSARY.md`. |
+| Public demo URL | [https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test](https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test). The Worker redirects to the active Quick Tunnel; it is not a permanent host for the local app. |
+| Public demo status | Rechecked 2026-10-18: landing page, `/health`, 314 `/labels`, `/model`, and secure `/stream` WebSocket all passed. `start_all.bat` now starts/reuses the API and frontend, then opens the Quick Tunnel/Worker launcher. Keep all service windows open. |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
-| Tests | 104 backend passing (`pytest training app/backend/tests`: 69 + 6 sign library + 29 SignLine Emergency; data-dependent tests skip without `data/metadata`) + 15 frontend (`npm test` in `app/frontend`) |
+| Tests | Current focused check: backend API 14 passed / 5 skipped; frontend 15 passed; static grouped-split tests 4 passed. |
 | Repository | `https://github.com/Addy-coder786/Mudra` (remote `mudra`); older pushes: `Addy-coder786/ISL_Addy` (remote `origin`) |
 | Overall state | Recognition is accurate on new takes by **signers seen in training**; accuracy for new people is unmeasured (about 67% on unseen recording sessions); **live use on a real laptop webcam is not yet reliable** (Section 16). Audit: `docs/AUDIT_2026-10-13.md` |
 
@@ -233,14 +236,16 @@ build a sentence and speak it.
 │   │   ├── models/             landmark_mlp.py, sequence_model.py
 │   │   ├── training/           trainer.py (run_experiment), experiment_config.py (YAML merge)
 │   │   └── evaluation/         metrics.py, evaluate.py
-│   ├── scripts/                command-line tools (Section 11)
-│   └── tests/                  unit and end-to-end tests
+│   ├── scripts/                command-line tools (Section 11), including `static_sign_prototype.py` for this local experiment
+│   └── tests/                  unit and end-to-end tests; `test_static_sign_splits.py` checks the static 4:1 grouping
 ├── data/
-│   ├── README.md               data layout, sources, how to rebuild landmarks and splits
+│   ├── README.md               data layout, sources, static-sign experiment and training commands
+│   ├── raw/static_signs/       local still images copied from MudraPhoneWebcam; git-ignored
 │   └── metadata/               manifests + split sets: NOT in the repository (kept locally, shared separately)
 └── docs/
     ├── AUDIT_2026-10-13.md     audit: what is real, what was faked or overstated, evidence, fixes
     ├── SIGNLINE_EMERGENCY.md   Emergency Communication Assistant: behaviour, honesty rules, architecture, API, config, limits
+    ├── STATIC_SIGN_GLOSSARY.md 32-class model labels, per-label split and exploratory results
     ├── blueprints/             versioned development plans (README index; v1.0 = definition of MUDRA v1.0, milestones M0-M6)
     ├── MUDRA_MASTER_PLAN.md    original analysis, dataset research, dated progress log (very detailed)
     ├── architecture.md         short architecture table
@@ -742,7 +747,7 @@ motion blur in the full-body INCLUDE footage.
 - **Session-independent:** 9 whole INCLUDE recording sessions held out (sessions found by file-number
   runs and first-frame appearance clustering; a signer may appear in more than one session).
 
-### Current results (deployed v6, held-out test, corrected labels)
+### Detailed v6 benchmark results (held-out test, corrected labels; v8 update in Section 14)
 
 > **Read before quoting.** Test clips share signers and recording sessions with training (Section 12),
 > so these numbers mean "new takes by known signers". The best measured proxy for new people is the
@@ -925,15 +930,30 @@ training), PyTorch 2.11 + CUDA 12.8, NVIDIA RTX 5060 Laptop GPU (sm_120), Node 2
 (Python Tasks API; there is no `mp.solutions`), `@mediapipe/tasks-vision` 1.0.1 in the browser.
 
 **Quick start (Windows):** run `start_all.bat` (creates the venv, installs `requirements.txt` and
-`npm install` only when needed, starts both servers). Then open http://localhost:3000 →
-Communicate → Start Camera.
+`npm install` only when needed, starts/reuses both servers, waits for health checks, then opens a
+Tunnel and Worker window). Open http://localhost:3000 → Communicate → Start Camera. The tunnel script
+registers the Quick Tunnel with the existing Worker automatically. Keep the backend, frontend and
+tunnel windows running. Recheck the permanent URL after startup; Quick Tunnel URLs are temporary and
+the Worker returns 502 if the active tunnel exits or changes. If starting
+`main.py` reports Windows socket error 10048 on port 8000, another process already owns that port.
+Check `http://127.0.0.1:8000/health`; when it reports `model_loaded: true`, keep using that backend
+and do not start a duplicate. The updated `start_all.bat` reuses healthy services.
 
 **Manual start:**
 
 ```powershell
 cd app\backend; .venv\Scripts\python.exe main.py                 # API on :8000 (MUDRA_PORT to change)
 cd app\frontend; npm run dev -- --host 127.0.0.1 --port 3000     # app on :3000 (VITE_API_URL to point elsewhere)
+cloudflare\start-tunnel.ps1                                      # separate window; start_all.bat does this automatically
 ```
+
+The permanent demo URL is `https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test`.
+The Worker redirects browser and API requests to the current Quick Tunnel; Vite proxies API and
+`/stream` WebSocket traffic to the local backend. This is a laptop-hosted demo, not an always-on
+deployment. If the link fails, check local `http://127.0.0.1:3000/health`, confirm the tunnel
+launcher is still running, then rerun it. Do not put the Worker update token in source or docs.
+For the exact introduction vocabulary, signing/camera guidance, and model-training/accuracy notes,
+see [`docs/INTRO_SIGNING_GUIDE.md`](docs/INTRO_SIGNING_GUIDE.md).
 
 **Fresh clone:** `python -m venv app/backend/.venv`, `pip install -r app/backend/requirements.txt`
 (installs `mudra_ml` editable), `npm install` in `app/frontend`. The app runs with the committed
@@ -957,11 +977,10 @@ Reset: stop the server, delete `app/backend/var/`. Variables: `app/backend/.env.
 
 ## 18. Tests
 
-`pytest training app/backend/tests` → 104 passed (69 + 6 in `test_library.py` + 29 in `app/backend/tests/emergency`).
-`npm test` → 15 (adds 3 for the letter and phrase paths: all 26 letters once, unique phrases, per-track unlocking, same-track quiz options).
-`npm test` (Vitest) in `app/frontend` → 12 passed (5 for camera practice: hand slots, similarity, rest detection;
-7 for Game Mode): curriculum covers the 314 words once, lesson unlocking, XP and
-first-pass bonus, streak, badges, quiz answers are among the options, words without examples are skipped.
+Latest focused validation on 2026-10-18: `pytest app/backend/tests/test_api.py -q` → 14 passed,
+5 skipped; `npm test` in `app/frontend` → 15 passed; `npm run build` succeeded; the 4 static grouped
+split tests passed earlier in this setup. Skipped backend tests require optional local data/model
+artifacts. These checks verify app/API behavior, not real-person signing accuracy.
 
 | File | Covers |
 |---|---|
@@ -976,6 +995,10 @@ first-pass bonus, streak, badges, quiz answers are among the options, words with
 
 `app/backend/tests/conftest.py` redirects the event log and the emergency database so tests never write to the real ones. Tests
 that need the model or landmark data skip automatically when those files are missing.
+
+The static-image split tests are also runnable without pytest: `python training/tests/test_static_sign_splits.py -v`
+→ 4 passed. Static model preparation/training commands and their limitations are in `training/README.md`
+and `docs/STATIC_SIGN_GLOSSARY.md`.
 
 ---
 
@@ -1030,6 +1053,28 @@ that need the model or landmark data skip automatically when those files are mis
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-18 · local deployment recovery and accuracy clarification (uncommitted)
+- Rechecked the public Worker after it failed: the stored Quick Tunnel was stale (502) and the Vite
+  frontend had stopped; the local backend was still healthy. Restarted Vite and the Quick Tunnel and
+  re-registered the Worker. Verified `/model-test`, `/health` (`model_loaded=true`, 314 signs),
+  `/labels` (314), `/model`, and a public secure WebSocket start/frame exchange.
+- The launcher's process-object exit check could report an empty exit code while the OS tunnel process
+  was still alive. It now monitors the actual cloudflared PID and reports clearly if that process exits.
+- `start_all.bat` now reuses healthy services and refuses to launch a duplicate backend/frontend on
+  occupied ports. This avoids Windows error 10048 when manually starting a second API while the
+  original remains healthy.
+- `start_all.bat` now waits for local health checks and starts the tunnel/Worker launcher automatically.
+  The launcher reuses an already healthy tunnel only when the permanent Worker is routed to it.
+- Added `docs/INTRO_SIGNING_GUIDE.md` with landmark/sequence training details, realistic presentation
+  guidance, the exact word-model labels available for the requested introduction, and measured limits.
+- Documented the laptop-hosted tunnel lifecycle and restart command. The Worker is rechecked live,
+  but is only reachable while the frontend, backend, network and tunnel process are running; this is
+  not uptime-guaranteed hosting.
+- Clarified measured accuracy: v8's model-card test is 98.06% top-1 / 99.93% top-5 on 1,495 clips,
+  but test signers/sessions overlap training; per-recording accuracy is about 97.5%. The static
+  32-label still-image experiment is 34.1% raw top-1 on 88 grouped held-out images; after rejection,
+  65.1% precision at 48.9% coverage. Neither establishes live webcam accuracy for new signers.
 
 ### 2026-10-16 · docs: README, AGENTS.md, CLAUDE.md, HANDOVER brought up to date
 - Owner's request after `08dd74f`. HANDOVER: product summary (Section 1), feature-document pointers (Section 0),

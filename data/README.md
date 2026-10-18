@@ -16,6 +16,26 @@ data/
     └── splits/<name>/            train/val/test CSVs, classes.json, split_report.json (generated, not committed)
 ```
 
+## Local static-sign experiment
+
+The still-image source was copied from the sibling `MudraPhoneWebcam` project into
+`data/raw/static_signs/Frames_Word_Level/` (1,036 images in 131 label folders, about 65 MB).
+Only the 32-label `intro` profile is used for the current experiment; the other source folders
+remain available locally for later review. Sentence videos were not copied or used.
+
+From the repository root, run `python training/scripts/static_sign_prototype.py prepare --profile intro`
+and then `python training/scripts/static_sign_prototype.py train --profile intro`. Extraction
+features and manifests are local under `data/processed/static_signs/` and
+`data/metadata/static_signs/`; review sheets and evaluation reports are under
+`experiments/reports/static_signs/`. The fresh model and card are under `app/backend/models/`,
+and the training command refreshes `docs/STATIC_SIGN_GLOSSARY.md`.
+
+Splits target roughly 80/20 by image count but keep inferred filename families intact to avoid
+putting neighboring frames from one source clip into both sets. A label with only one inferred
+source family stays in training and has no independent test result. These filename groupings are
+not verified clip provenance or signer identities; the scores are exploratory, not signer-
+independent validation.
+
 ## Sources
 
 | Source | Manifest | Clips | Words | How to rebuild the landmarks |

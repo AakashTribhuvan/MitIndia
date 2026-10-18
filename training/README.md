@@ -22,6 +22,24 @@ MediaPipe models live in `training/assets/mediapipe/` (not committed). Download 
 
 ## Workflow
 
+### Static still-image prototype
+
+The current local experiment uses the 32-label `intro` profile from
+`data/raw/static_signs/Frames_Word_Level/`. It extracts MediaPipe pose/hand features and fits
+nearest-medoid prototypes from scratch; it is separate from the sequence model and is not wired
+into live recognition.
+
+```powershell
+python training/scripts/static_sign_prototype.py prepare --profile intro
+python training/scripts/static_sign_prototype.py train --profile intro
+```
+
+The split targets 4:1 by image count when possible, but keeps inferred filename families wholly
+within train or test. Labels represented by only one source family have no held-out test samples.
+The model card, confusion matrix, metrics and per-label counts are written by the training command;
+see `docs/STATIC_SIGN_GLOSSARY.md`. Do not adjust feature weights or thresholds based on the test
+set. The current small, unverified dataset is not enough to establish performance for every label.
+
 | Step | Command | Output |
 |---|---|---|
 | 1. Audit raw data (read-only) | `python training/scripts/audit_dataset.py --source own --input data/raw/own` | `experiments/reports/audit_own.{md,json}` |

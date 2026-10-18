@@ -31,6 +31,15 @@ class Settings:
     model_dir: Path = field(
         default_factory=lambda: Path(os.getenv("MUDRA_MODEL_DIR", BACKEND_DIR / "models" / "isl_mudra_combined_v8_desk_bilstm"))
     )
+    # Optional experimental still-pose recognizer; the sequence model remains the default.
+    intro_static_model: Path = field(
+        default_factory=lambda: Path(
+            os.getenv(
+                "MUDRA_INTRO_STATIC_MODEL",
+                BACKEND_DIR / "models" / "mudra_intro_static_pose_medoids_v1.npz",
+            )
+        )
+    )
     device: str = field(default_factory=lambda: os.getenv("MUDRA_DEVICE", "cpu"))
     cors_origins: list[str] = field(default_factory=_origins)
     # Overrides the validation-chosen threshold from the model card when set.

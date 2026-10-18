@@ -9,8 +9,10 @@
  * Configure with VITE_API_URL (backend address) and VITE_SIGN_MODEL=off to disable.
  */
 
-export const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
+export const API_BASE_URL = import.meta.env?.VITE_API_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000')
 const MODE = import.meta.env?.VITE_SIGN_MODEL || 'auto'
+const DEFAULT_MODEL = 'intro_static'
 const WS_URL = API_BASE_URL.replace(/^http/, 'ws') + '/stream'
 const HEALTH_TIMEOUT_MS = 2500
 
@@ -35,6 +37,7 @@ class SignRecognizer {
     this.error = null
     this.ws = null
     this.started = false
+    this.model = DEFAULT_MODEL
     this.onPrediction = null // whole-sign result when a sign ends
     this.onActivity = null // 'signing' when a sign starts, 'ended' when it is classified, 'idle' when it was too short
     this.onProvisional = null // live best guess while signing (display only)
@@ -45,6 +48,15 @@ class SignRecognizer {
     this.status = status
     this.error = error
     this.onStatusChange?.({ status, info: this.info, error })
+  }
+
+  setModel(model) {
+    if (!['sequence', 'intro_static'].includes(model)) {
+      throw new Error(`Unknown recognition model: ${model}`)
+    }
+    if (this.model === model) return
+    this.model = model
+    this.reset()
   }
 
   /** Checks the backend; call again to retry after starting it. */
@@ -74,7 +86,7 @@ class SignRecognizer {
     this.ws = ws
     this.started = false
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'start', width, height }))
+      ws.send(JSON.stringify({ type: 'start', width, height, model: this.model }))
       this.started = true
     }
     ws.onmessage = (msg) => {

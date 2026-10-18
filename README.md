@@ -13,19 +13,22 @@ Only body and hand landmark coordinates leave the browser, never camera images.
 **Taking over the project (people or AI models): read [`HANDOVER.md`](HANDOVER.md) first.** It is
 updated at every push and documents the architecture, interfaces, data, models and open problems.
 
-## Status (16 Oct 2026)
+## Status (18 Oct 2026)
 
 | Area | State |
 |---|---|
 | Web app (Home, Communication, Learning, Game Mode, Progress, Teach a sign, Settings; Admin pages) | Working; avatar demonstrates 26 letters and 13 words; installable on phones (web app manifest) |
-| Recognition model | `isl_mudra_combined_v8_desk_bilstm`: 314 words + "no sign"; also trained with hands resting in view and low camera frame rates (the numbers below are for the previous model, v6; v8 is in HANDOVER Section 14) |
+| Recognition model | `isl_mudra_combined_v8_desk_bilstm`: 314 words + "no sign"; 98.06% top-1 / 99.93% top-5 on 1,495 held-out clips in its model card. Test clips share signers/sessions with training; per-recording accuracy is about 97.5%. This is not a live-webcam or new-signer score. v8 stream results are in HANDOVER Section 14. |
+| Static-sign recognition | Communication defaults to the 32-class phone-webcam still-pose prototype. The backend recognizes held poses continuously, with a 450 ms stability hold; only 10 labels have finite rejection thresholds. The phone model's exploratory held-out score was 13/73 (17.8%), not a live-camera accuracy estimate. The v8 sequence model and alphabet model remain unchanged. See [`docs/STATIC_SIGN_GLOSSARY.md`](docs/STATIC_SIGN_GLOSSARY.md). |
 | Live recognition (Communication) | *Words*: sign start/end detection, automatic word adding, spoken sentence, "How to sign it" examples; *Spell* and *Phrase* modes (below) |
 | New words from the Teach a sign page | Work immediately (few-shot), stored for retraining |
 | Data pipeline | MediaPipe landmarks, leakage-safe splits, label audit |
-| Fingerspelling letters A-Z and 99 phrases | New (from the team's alphabet photos and sentence videos): letters 70.9% / phrases 58.3% first guess on held-out data (phrases are always chosen by the user from the top guesses); in Learning, Game Mode and Communication (*Spell* / *Phrase*). Not yet measured on a live webcam. See [`docs/SIGN_LIBRARY.md`](docs/SIGN_LIBRARY.md) |
+| Fingerspelling letters A-Z and 99 phrases | Held-out colour-group alphabet photos: 70.9% top-1 / 83.8% top-3 (1,070 photos); held-out phrase videos: 58.3% top-1 / 81.3% top-5 (96 videos, same signers). Phrases remain user-selected from candidate guesses. Neither is measured on a live webcam. See [`docs/SIGN_LIBRARY.md`](docs/SIGN_LIBRARY.md). |
+| Public demo | [Permanent Worker URL](https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test) redirects to the current laptop Quick Tunnel. Rechecked 18 Oct 2026: app, `/health`, `/labels` (314), `/model` and secure `/stream` WebSocket worked. A previous stale target returned 502; restart `cloudflare\start-tunnel.ps1` if that recurs. It goes offline when the local tunnel/frontend/backend stop. |
+| Getting started/signing guide | [`docs/INTRO_SIGNING_GUIDE.md`](docs/INTRO_SIGNING_GUIDE.md): how to present words, exact vocabulary for your introduction, training approach and honest accuracy limits. |
 | Emergency help (SOS circle, bottom-right) | Prototype in demo mode: explain an emergency with buttons, signs or a personal gesture, check and correct what SignLine understood, confirm, share with an in-app demo responder desk. Contacts no one; signs are simulated because the model does not know most emergency signs. In a real emergency in India, call 112. See [`docs/SIGNLINE_EMERGENCY.md`](docs/SIGNLINE_EMERGENCY.md) |
 | Known gap | Live use on a laptop webcam is not yet reliable: the browser tracks at ~6 fps on some machines and the model has seen few signers (66.7% on unseen recording sessions) |
-| Honest reading of the numbers | Test clips come from the same signers and sessions as training clips, so the 97-99% figures below are "new takes by known signers". Accuracy for new people has not been measured. See the audit: [`docs/AUDIT_2026-10-13.md`](docs/AUDIT_2026-10-13.md) |
+| Honest reading of the numbers | The 97-99% word-model results measure held-out clips from signers/sessions also represented in training. The best documented proxy for unseen people is about 67% on held-out INCLUDE recording sessions (v3 recipe); the developer's real webcam has not been validated with the current model. See the audit: [`docs/AUDIT_2026-10-13.md`](docs/AUDIT_2026-10-13.md). |
 
 ## Results
 
@@ -128,13 +131,21 @@ UI: Signing... / "Looks like X" <---- (3-cut smoothing, threshold,           upp
 
 ## Quick start (Windows)
 
-1. Run `start_all.bat`. It creates the Python environment, installs dependencies and starts both servers.
+1. Run `start_all.bat`. It creates the Python environment, installs dependencies and starts or reuses
+   the backend and frontend; after both respond, it opens a **Tunnel and Worker** window which starts
+   the Quick Tunnel and redirects the permanent Worker URL automatically.
 2. Open http://localhost:3000, choose the demo user, then **Communication -> Start Camera Stream**.
 3. *Words*: sign one word from start to finish, then lower your hands. The word is added when the sign ends.
    *Spell*: hold each letter still for about a second. *Phrase*: sign one phrase, then pick it from the top guesses.
 4. To teach it a new word, open **Teach a sign**, enter your name, pick or type the word and record it
    5 times. The word works in Communication straight away and is saved for the next training run.
 5. **SOS** (bottom-right, every page) opens the demo emergency assistant; it contacts no one.
+
+Keep the **Tunnel and Worker** window open for remote access. See
+[`docs/INTRO_SIGNING_GUIDE.md`](docs/INTRO_SIGNING_GUIDE.md) for which signs to perform and how.
+If the API already reports `model_loaded: true` at `http://127.0.0.1:8000/health`, do not run
+`main.py` again: Windows error 10048 means the port already has a listener. The launcher checks for
+an already active and correctly routed tunnel before creating a new one.
 
 Backend: http://localhost:8000 (`/docs`, `/health`, `/labels`, `/predict`, `/recordings`,
 `/reference/{sign}`, `/library`, `/letters/predict`, `/phrases/predict`, WebSocket `/stream`). If port 8000 is taken, start the backend with

@@ -21,6 +21,7 @@ from mudra_api.recordings import RecordingStore, frames_to_sequence, parse_frame
 from mudra_api.references import ReferenceClips
 from mudra_api.schemas import LetterRequest, PredictRequest, PredictResponse
 from mudra_api.settings import Settings
+from mudra_api.static_pose import StaticPoseModel, StaticPoseStreamingRecognizer
 from signline_emergency.api import emergency_router
 
 log = logging.getLogger("mudra_api")
@@ -46,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     recognizer: SignRecognizer | None = None
     bundle: ModelBundle | None = None
+    intro_static_model: StaticPoseModel | None = None
     load_error: str | None = None
     segmenter_cfg = SegmenterConfig.load(project_path("training/configs/streaming.json"))
     try:
@@ -56,6 +58,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     except FileNotFoundError as exc:
         load_error = f"Model files not found in {settings.model_dir}: {exc.filename}"
         log.warning(load_error)
+    try:
+        intro_static_model = StaticPoseModel(settings.intro_static_model)
+        log.info(
+            "Loaded experimental intro static model (%d classes, %d live-eligible)",
+            len(intro_static_model.classes),
+            len(intro_static_model.live_labels),
+        )
+    except FileNotFoundError as exc:
+        log.warning("Intro static model is unavailable: %s", exc)
     references = ReferenceClips(settings.reference_split)
     library = Library(settings.letters_model_dir, settings.letters_landmarks, settings.phrases_model_dir,
                       settings.phrases_split, settings.device)
@@ -77,18 +88,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
+        active_model = recognizer or intro_static_model
+        if recognizer is not None:
+            num_signs = len([c for c in recognizer.classes if not c.startswith("_")])
+            model_name = recognizer.name
+            device = str(recognizer.device)
+        elif intro_static_model is not None:
+            num_signs = len(intro_static_model.live_labels)
+            model_name = "intro_static"
+            device = "cpu"
+        else:
+            num_signs = 0
+            model_name = None
+            device = None
         return {
             "status": "ok",
-            "model_loaded": recognizer is not None,
-            "model": recognizer.name if recognizer else None,
-            "num_signs": len([c for c in recognizer.classes if not c.startswith("_")]) if recognizer else 0,
-            "device": str(recognizer.device) if recognizer else None,
+            "model_loaded": active_model is not None,
+            "model": model_name,
+            "num_signs": num_signs,
+            "device": device,
             "error": load_error,
             "custom_words": len(store.bank),
         }
 
     @app.get("/labels")
-    def labels() -> dict:
+    def labels(model: str = "sequence") -> dict:
+        if model == "intro_static":
+            if intro_static_model is None:
+                raise HTTPException(status_code=503, detail="The expanded introduction model is not installed.")
+            return {
+                "count": len(set(intro_static_model.classes)),
+                "labels": [
+                    {
+                        "sign": label,
+                        "label": readable(label),
+                        "has_reference": False,
+                        "live": label in intro_static_model.live_labels,
+                    }
+                    for label in sorted(set(intro_static_model.classes))
+                ],
+            }
+        if model != "sequence":
+            raise HTTPException(status_code=400, detail="Unknown recognition model.")
         rec = require_model()
         signs = [c for c in rec.classes if not c.startswith("_")]
         tested = rec.card.get("per_word_test", {})
@@ -114,6 +155,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         card["num_signs"] = len([c for c in rec.classes if not c.startswith("_")])
         card["active_threshold"] = rec.threshold
         return card
+
+    @app.get("/models")
+    def models() -> dict:
+        available = []
+        if recognizer is not None:
+            count = len([c for c in recognizer.classes if not c.startswith("_")])
+            available.append({
+                "id": "sequence",
+                "name": recognizer.name,
+                "trained_words": count,
+                "live_words": count,
+                "experimental": False,
+            })
+        if intro_static_model is not None:
+            available.append({
+                "id": "intro_static",
+                "name": "Expanded introduction (static pose)",
+                "trained_words": len(set(intro_static_model.classes)),
+                "live_words": len(intro_static_model.live_labels),
+                "experimental": True,
+                "words": [
+                    {"label": label, "live": label in intro_static_model.live_labels}
+                    for label in sorted(set(intro_static_model.classes))
+                ],
+            })
+        return {"models": available}
 
     events_log = settings.events_log
 
@@ -164,7 +231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await ws.send_json({"event": "error", "detail": load_error})
             await ws.close()
             return
-        session: StreamingRecognizer | None = None
+        session: StreamingRecognizer | StaticPoseStreamingRecognizer | None = None
         frames: list = []
         size, diag, diag_logged = (0, 0), {}, -1e9
         try:
@@ -173,7 +240,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if msg.get("type") == "start":
                     save_session(frames, *size, diag)
                     frames, size = [], (int(msg["width"]), int(msg["height"]))
-                    session = StreamingRecognizer(bundle, segmenter_cfg, *size, store.bank)
+                    model_id = msg.get("model", "sequence")
+                    if model_id == "intro_static":
+                        if intro_static_model is None:
+                            await ws.send_json({
+                                "event": "error",
+                                "detail": "The expanded introduction model is not installed on this server.",
+                            })
+                            await ws.close()
+                            return
+                        session = StaticPoseStreamingRecognizer(intro_static_model, *size)
+                    elif model_id == "sequence":
+                        session = StreamingRecognizer(bundle, segmenter_cfg, *size, store.bank)
+                    else:
+                        await ws.send_json({"event": "error", "detail": "Unknown recognition model."})
+                        await ws.close()
+                        return
                     continue
                 if msg.get("type") == "diag":  # client tracking diagnostics (fps, delegate), kept with a saved session
                     diag = {k: msg[k] for k in DIAG_KEYS if k in msg}

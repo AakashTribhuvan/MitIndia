@@ -11,6 +11,7 @@ __pycache__/
 # Secrets
 .env
 kaggle.json
+cloudflare/current-tunnel.txt
 
 # Data, models & experiment output (large / regenerable)
 data/raw/

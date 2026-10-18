@@ -74,6 +74,22 @@ export function cameraErrorKind(error) {
 
 const BLACK_LUMA = 8 // mean brightness (0-255) below which a frame counts as black
 const FROZEN_S = 3 // no new video frame for this long = frozen feed
+// Damp landmark jitter before drawing or sending a frame to the recognizer.
+const LANDMARK_CURRENT_WEIGHT = 0.55
+
+function smoothPoint(previous, current) {
+  return {
+    x: previous.x * (1 - LANDMARK_CURRENT_WEIGHT) + current.x * LANDMARK_CURRENT_WEIGHT,
+    y: previous.y * (1 - LANDMARK_CURRENT_WEIGHT) + current.y * LANDMARK_CURRENT_WEIGHT,
+    z: (previous.z ?? 0) * (1 - LANDMARK_CURRENT_WEIGHT) + (current.z ?? 0) * LANDMARK_CURRENT_WEIGHT,
+    ...(current.visibility == null ? {} : { visibility: current.visibility })
+  }
+}
+
+function smoothLandmarks(previous, current) {
+  if (!previous || previous.length !== current.length) return current.map((point) => ({ ...point }))
+  return current.map((point, index) => smoothPoint(previous[index], point))
+}
 
 class HandTrackerService {
   constructor() {
@@ -93,6 +109,8 @@ class HandTrackerService {
     this.healthTimer = null
     this.onIssueCallback = null // called with 'black' | 'frozen' | null when the feed's health changes
     this.issue = null
+    this.smoothedHands = new Map()
+    this.smoothedPose = null
   }
 
   /** Video inputs ({deviceId, label}); labels are empty until camera permission has been granted. */
@@ -122,15 +140,17 @@ class HandTrackerService {
         baseOptions: { modelAssetPath: HAND_MODEL },
         runningMode: 'VIDEO',
         numHands: 2,
-        minHandDetectionConfidence: 0.5,
-        minHandPresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        minHandDetectionConfidence: 0.25,
+        minHandPresenceConfidence: 0.25,
+        minTrackingConfidence: 0.25
       })
       const pose = await createWithFallback(PoseLandmarker, vision, {
         baseOptions: { modelAssetPath: POSE_MODEL },
         runningMode: 'VIDEO',
         numPoses: 1,
-        minPoseDetectionConfidence: 0.5
+        minPoseDetectionConfidence: 0.35,
+        minPosePresenceConfidence: 0.35,
+        minTrackingConfidence: 0.35
       })
       this.handLandmarker = hands.landmarker
       this.poseLandmarker = pose.landmarker
@@ -180,6 +200,8 @@ class HandTrackerService {
     await this.videoElement.play()
 
     this.isTracking = true
+    this.smoothedHands.clear()
+    this.smoothedPose = null
     this.lastVideoTime = -1
     this._countCameraFrames()
     this._watchHealth()
@@ -270,13 +292,28 @@ class HandTrackerService {
         const dt = this.lastFrameAt ? (timestamp - this.lastFrameAt) / 1000 : 0
         this.lastFrameAt = timestamp
         if (dt > 0) this.fps = ema(this.fps, 1 / dt)
-        this.onResultsCallback?.({
-          multiHandLandmarks: hands.landmarks || [],
-          multiHandedness: (hands.handedness || hands.handednesses || []).map((categories) => ({
+        const rawHands = hands.landmarks || []
+        const handedness = (hands.handedness || hands.handednesses || []).map((categories) => ({
             label: categories?.[0]?.categoryName,
             score: categories?.[0]?.score ?? 0
-          })),
-          poseLandmarks: pose.landmarks?.[0] || null,
+          }))
+        const currentHandKeys = new Set()
+        const multiHandLandmarks = rawHands.map((landmarks, index) => {
+          const key = handedness[index]?.label || `hand-${index}`
+          currentHandKeys.add(key)
+          const smoothed = smoothLandmarks(this.smoothedHands.get(key), landmarks)
+          this.smoothedHands.set(key, smoothed)
+          return smoothed
+        })
+        for (const key of this.smoothedHands.keys()) {
+          if (!currentHandKeys.has(key)) this.smoothedHands.delete(key)
+        }
+        const rawPose = pose.landmarks?.[0] || null
+        this.smoothedPose = rawPose ? smoothLandmarks(this.smoothedPose, rawPose) : null
+        this.onResultsCallback?.({
+          multiHandLandmarks,
+          multiHandedness: handedness,
+          poseLandmarks: this.smoothedPose,
           width: video.videoWidth,
           height: video.videoHeight,
           timestamp,
@@ -306,6 +343,8 @@ class HandTrackerService {
     this.healthTimer = null
     this.issue = null
     this.lastPose = null
+    this.smoothedHands.clear()
+    this.smoothedPose = null
     this.lastFrameAt = 0
     this.fps = 0
     this.cameraFps = 0
