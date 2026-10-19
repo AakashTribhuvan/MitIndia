@@ -15,16 +15,26 @@ from mudra_ml.streaming import ModelBundle, SegmenterConfig, StreamingRecognizer
 from pydantic import BaseModel, Field
 
 from mudra_api import __version__
+from mudra_api.isl500_video import (
+    CommonWordVideoTestCases,
+    ISL500TestCases,
+    ISL500VideoStreamingRecognizer,
+    ISL500WordModel,
+)
 from mudra_api.library import Library
+from mudra_api.model_video_examples import ModelVideoExamples
 from mudra_api.recognizer import SignRecognizer, readable
 from mudra_api.recordings import RecordingStore, frames_to_sequence, parse_frame
 from mudra_api.references import ReferenceClips
 from mudra_api.schemas import LetterRequest, PredictRequest, PredictResponse
 from mudra_api.settings import Settings
 from mudra_api.static_pose import StaticPoseModel, StaticPoseStreamingRecognizer
-from mudra_api.static_top10 import StaticTop10Model, StaticTop10StreamingRecognizer, frame_palm_directions
+from mudra_api.static_top10 import (
+    StaticTop10Model,
+    StaticTop10StreamingRecognizer,
+    frame_palm_directions,
+)
 from mudra_api.static_tracking_references import StaticTrackingReferences
-from mudra_api.isl500_video import ISL500VideoStreamingRecognizer, ISL500WordModel
 from signline_emergency.api import emergency_router
 
 log = logging.getLogger("mudra_api")
@@ -53,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     intro_static_model: StaticPoseModel | None = None
     static_top10_model: StaticTop10Model | None = None
     isl500_video_model: ISL500WordModel | None = None
+    signline_intro_model: ISL500WordModel | None = None
     common_word_video_recognizer: SignRecognizer | None = None
     common_word_video_bundle: ModelBundle | None = None
     load_error: str | None = None
@@ -90,6 +101,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("Loaded experimental ISL500 video model (%d words)", len(isl500_video_model.classes))
     except (FileNotFoundError, ValueError, KeyError, OSError) as exc:
         log.info("ISL500 video model is unavailable: %s", exc)
+    try:
+        signline_intro_model = ISL500WordModel(settings.signline_intro_model)
+        signline_intro_model.name = "SignLine introduction and everyday words"
+        log.info("Loaded SignLine introduction model (%d words)", len(signline_intro_model.classes))
+    except (FileNotFoundError, ValueError, KeyError, OSError) as exc:
+        log.info("SignLine introduction model is unavailable: %s", exc)
+    isl500_test_cases = ISL500TestCases(settings.isl500_test_report, settings.isl500_test_split)
+    signline_intro_test_cases = ISL500TestCases(
+        settings.signline_intro_test_report,
+        settings.signline_intro_test_split,
+        url_prefix="/signline-intro/test-cases",
+    )
+    common_test_metrics = (common_word_video_recognizer.card.get("metrics", {}) if common_word_video_recognizer else {}).get("test", {})
+    common_word_test_cases = CommonWordVideoTestCases(
+        settings.common_word_video_test_split,
+        common_test_metrics.get("accuracy"),
+    )
+    model_video_examples = ModelVideoExamples(
+        settings.common_word_video_train_split,
+        settings.phrase_video_dir,
+        settings.signline_intro_test_split,
+    )
     references = ReferenceClips(settings.reference_split)
     # Full v8 reference landmarks are optional local training data. When they are
     # absent, expose real training examples from the bundled common-word video set.
@@ -120,7 +153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        active_model = recognizer or intro_static_model or static_top10_model or common_word_video_recognizer or isl500_video_model
+        active_model = recognizer or intro_static_model or static_top10_model or common_word_video_recognizer or isl500_video_model or signline_intro_model
         if recognizer is not None:
             num_signs = len([c for c in recognizer.classes if not c.startswith("_")])
             model_name = recognizer.name
@@ -140,6 +173,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif isl500_video_model is not None:
             num_signs = len(isl500_video_model.live_labels)
             model_name = "isl500_video"
+            device = "cpu"
+        elif signline_intro_model is not None:
+            num_signs = len(signline_intro_model.live_labels)
+            model_name = "signline_intro_video"
             device = "cpu"
         else:
             num_signs = 0
@@ -170,6 +207,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return {"count": len(isl500_video_model.classes), "labels": [
                 {"sign": label, "label": readable(label), "has_reference": False, "live": True}
                 for label in isl500_video_model.classes
+            ]}
+        if model == "signline_intro_video":
+            if signline_intro_model is None:
+                raise HTTPException(status_code=503, detail="The SignLine introduction word model is not installed.")
+            return {"count": len(signline_intro_model.classes), "labels": [
+                {"sign": label, "label": readable(label), "has_reference": True, "live": True}
+                for label in signline_intro_model.classes
             ]}
         if model == "intro_static":
             if intro_static_model is None:
@@ -309,7 +353,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             count = len([c for c in common_word_video_recognizer.classes if not c.startswith("_")])
             available.append({
                 "id": "common_word_video",
-                "name": "Common word videos · signer-held-out (experimental)",
+                "name": "Common words · mixed-source video model (experimental)",
                 "trained_words": count,
                 "live_words": count,
                 "experimental": True,
@@ -323,7 +367,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             isl500_report = read_json(project_path("experiments/reports/isl500_sentence_subset/model_report.json"))
             available.append({
                 "id": "isl500_video",
-                "name": "ISL500 video pilot · signer-held-out (experimental)",
+                "name": "ISL500 · 14-word video pilot (experimental)",
                 "trained_words": len(isl500_video_model.classes),
                 "live_words": len(isl500_video_model.live_labels),
                 "experimental": True,
@@ -333,6 +377,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "words": [{"label": label, "live": True} for label in isl500_video_model.classes],
             })
         return {"models": available}
+
+    @app.get("/isl500/test-cases")
+    def isl500_test_case_list() -> dict:
+        """Metadata for the locked test videos used to calculate the ISL500 pilot score."""
+        if isl500_video_model is None:
+            raise HTTPException(status_code=503, detail="The ISL500 video pilot is not installed.")
+        return isl500_test_cases.list()
+
+    @app.get("/isl500/test-cases/{case_id}/video")
+    def isl500_test_case_video(case_id: str):
+        """Stream a video only when its opaque ID maps to a locked test-set prediction."""
+        if isl500_video_model is None:
+            raise HTTPException(status_code=503, detail="The ISL500 video pilot is not installed.")
+        return isl500_test_cases.video(case_id)
+
+    @app.get("/signline-intro/test-cases")
+    def signline_intro_test_case_list() -> dict:
+        if signline_intro_model is None:
+            raise HTTPException(status_code=503, detail="The SignLine introduction model is not installed.")
+        return signline_intro_test_cases.list()
+
+    @app.get("/signline-intro/test-cases/{case_id}/video")
+    def signline_intro_test_case_video(case_id: str):
+        if signline_intro_model is None:
+            raise HTTPException(status_code=503, detail="The SignLine introduction model is not installed.")
+        return signline_intro_test_cases.video(case_id)
+
+    @app.get("/common-word/test-cases")
+    def common_word_test_case_list() -> dict:
+        """Metadata for the locked held-out clips used to evaluate common-word videos."""
+        if common_word_video_recognizer is None:
+            raise HTTPException(status_code=503, detail="The common-word video model is not installed.")
+        return common_word_test_cases.list()
+
+    @app.get("/common-word/test-cases/{case_id}/video")
+    def common_word_test_case_video(case_id: str):
+        """Stream a video only when its opaque ID maps to the locked common-word test split."""
+        if common_word_video_recognizer is None:
+            raise HTTPException(status_code=503, detail="The common-word video model is not installed.")
+        return common_word_test_cases.video(case_id)
+
+    @app.get("/model-video-examples")
+    def model_video_example_list(model_id: str, sign: str | None = None) -> dict:
+        """List clip-backed practice examples for a sign in the selected model's vocabulary."""
+        label_sets = {
+            "sequence": [label for label in (recognizer.classes if recognizer else []) if not label.startswith("_")],
+            "common_word_video": [label for label in (common_word_video_recognizer.classes if common_word_video_recognizer else []) if not label.startswith("_")],
+            "isl500_video": list(isl500_video_model.live_labels) if isl500_video_model else [],
+            "signline_intro_video": list(signline_intro_model.live_labels) if signline_intro_model else [],
+            "intro_static": sorted(set(intro_static_model.classes)) if intro_static_model else [],
+            "top10_v2": sorted(set(static_top10_model.classes)) if static_top10_model else [],
+            "phrases": [label for label in (library.phrase_model.classes if library.phrase_model else []) if not label.startswith("_")],
+            "letters": [f"LETTER_{label}" for label in (library.letter_model.classes if library.letter_model else [])],
+        }
+        labels = label_sets.get(model_id)
+        if labels is None:
+            raise HTTPException(status_code=404, detail="Unknown model.")
+        if sign:
+            return model_video_examples.list_for(model_id, sign, labels)
+        return model_video_examples.available(model_id, labels)
+
+    @app.get("/model-video-examples/{model_id}/{clip_id}/video")
+    def model_video_example_video(model_id: str, clip_id: str):
+        """Stream a local reference clip identified by the in-memory opaque ID."""
+        return model_video_examples.video(model_id, clip_id)
 
     events_log = settings.events_log
 
@@ -379,7 +488,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         {"type":"frame","t":seconds,"hands":[{landmarks,handedness,score}],"pose":[[x,y,z,v]]|null}.
         Server replies only on changes: sign_started, sign_ended (+result), too_short."""
         await ws.accept()
-        if bundle is None and intro_static_model is None and static_top10_model is None and common_word_video_bundle is None and isl500_video_model is None:
+        if bundle is None and intro_static_model is None and static_top10_model is None and common_word_video_bundle is None and isl500_video_model is None and signline_intro_model is None:
             await ws.send_json({"event": "error", "detail": load_error})
             await ws.close()
             return
@@ -420,6 +529,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             await ws.close()
                             return
                         session = ISL500VideoStreamingRecognizer(isl500_video_model, segmenter_cfg, *size)
+                    elif model_id == "signline_intro_video":
+                        if signline_intro_model is None:
+                            await ws.send_json({"event": "error", "detail": "The SignLine introduction model is not installed."})
+                            await ws.close()
+                            return
+                        session = ISL500VideoStreamingRecognizer(signline_intro_model, segmenter_cfg, *size, model_id="signline_intro_video")
                     elif model_id == "sequence":
                         if bundle is None:
                             await ws.send_json({"event": "error", "detail": "The deployed sequence model is not installed."})

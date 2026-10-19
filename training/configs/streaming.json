@@ -1,8 +1,8 @@
 {
   "raise_y": 1.0,
-  "speed": 2.0,
+  "speed": 1.2,
   "on_s": 0.05,
-  "off_s": 0.4,
+  "off_s": 0.2,
   "pad_pre_s": 0.3,
   "pad_post_s": 0.2,
   "min_sign_s": 0.3,
@@ -11,10 +11,12 @@
   "commit_threshold": 0.7,
   "margin": 0.0,
   "tta": 1,
-  "cooldown_s": 1.0,
-  "provisional_s": 0.5,
-  "still_s": 0.6,
+  "cooldown_s": 0.25,
+  "provisional_s": 0.8,
+  "still_s": 0.4,
   "still_speed": 0.5,
+  "motion_release_speed": 0.45,
+  "motion_deadband": 0.02,
   "still_below_y": 0.0,
   "join_short_s": 0.5
 }

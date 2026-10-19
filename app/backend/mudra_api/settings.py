@@ -44,21 +44,71 @@ class Settings:
     static_top10_model: Path = field(
         default_factory=lambda: Path(os.getenv(
             "MUDRA_STATIC_TOP10_MODEL",
-            BACKEND_DIR.parents[1] / "data" / "processed" / "static_signs" / "top10_v2" / "static_top10_model_v2.joblib",
+            BACKEND_DIR / "models" / "static_top10_v2" / "model.joblib",
         ))
     )
     # Isolated-word video baseline; separate from the deployed model and selectable at runtime.
     common_word_video_model_dir: Path = field(
         default_factory=lambda: Path(os.getenv(
             "MUDRA_COMMON_WORD_VIDEO_MODEL_DIR",
-            BACKEND_DIR.parents[1] / "data" / "processed" / "models" / "common_word_video_baseline",
+            BACKEND_DIR / "models" / "common_word_video_baseline",
         ))
     )
-    # Signer-held-out ISL500 temporal word pilot (local ignored artifact; opt-in in the model menu).
+    # Signer-held-out ISL500 temporal word pilot (packaged; opt-in in the model menu).
     isl500_video_model: Path = field(
         default_factory=lambda: Path(os.getenv(
             "MUDRA_ISL500_VIDEO_MODEL",
-            BACKEND_DIR.parents[1] / "data" / "processed" / "isl500_sentence_subset" / "model" / "isl500_word_model_v1.joblib",
+            BACKEND_DIR / "models" / "isl500_video_pilot" / "model.joblib",
+        ))
+    )
+    # Expanded signer-held-out vocabulary model for the introduction and common ISL words.
+    signline_intro_model: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_SIGNLINE_INTRO_MODEL",
+            BACKEND_DIR / "models" / "signline_intro_video" / "model.joblib",
+        ))
+    )
+    signline_intro_test_report: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_SIGNLINE_INTRO_TEST_REPORT",
+            BACKEND_DIR.parents[1] / "experiments" / "reports" / "signline_intro" / "model_report.json",
+        ))
+    )
+    signline_intro_test_split: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_SIGNLINE_INTRO_TEST_SPLIT",
+            BACKEND_DIR.parents[1] / "data" / "metadata" / "splits" / "signline_intro" / "split.csv",
+        ))
+    )
+    # Local evaluation artifacts for viewing only the pilot's locked held-out clips.
+    isl500_test_report: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_ISL500_TEST_REPORT",
+            BACKEND_DIR.parents[1] / "experiments" / "reports" / "isl500_sentence_subset" / "model_report.json",
+        ))
+    )
+    isl500_test_split: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_ISL500_TEST_SPLIT",
+            BACKEND_DIR.parents[1] / "data" / "metadata" / "splits" / "isl500_sentence_subset" / "split.csv",
+        ))
+    )
+    common_word_video_test_split: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_COMMON_WORD_VIDEO_TEST_SPLIT",
+            BACKEND_DIR.parents[1] / "data" / "metadata" / "splits" / "common_word_videos" / "test.csv",
+        ))
+    )
+    common_word_video_train_split: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_COMMON_WORD_VIDEO_TRAIN_SPLIT",
+            BACKEND_DIR.parents[1] / "data" / "metadata" / "splits" / "common_word_videos" / "train.csv",
+        ))
+    )
+    phrase_video_dir: Path = field(
+        default_factory=lambda: Path(os.getenv(
+            "MUDRA_PHRASE_VIDEO_DIR",
+            BACKEND_DIR.parents[2] / "MudraPhoneWebcam" / "training_data" / "Videos_Sentence_Level",
         ))
     )
     device: str = field(default_factory=lambda: os.getenv("MUDRA_DEVICE", "cpu"))

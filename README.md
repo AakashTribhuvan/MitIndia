@@ -12,13 +12,15 @@ Only body and hand landmark coordinates leave the browser, never camera images.
 
 **Taking over the project (people or AI models): read [`HANDOVER.md`](HANDOVER.md) first.** It is
 updated at every push and documents the architecture, interfaces, data, models and open problems.
+The model files needed for inference on another PC are included under `app/backend/models/`; see
+[`MODEL_USAGE.md`](MODEL_USAGE.md) for the inventory and dataset-use restrictions.
 
 ## Status (18 Oct 2026)
 
 | Area | State |
 |---|---|
 | Web app (Home, Communication, Learning, Game Mode, Progress, Teach a sign, Settings; Admin pages) | Working; avatar demonstrates 26 letters and 13 words; installable on phones (web app manifest) |
-| Recognition model | `isl_mudra_combined_v8_desk_bilstm`: 314 words + "no sign"; 98.06% top-1 / 99.93% top-5 on 1,495 held-out clips in its model card. Test clips share signers/sessions with training; per-recording accuracy is about 97.5%. This is not a live-webcam or new-signer score. v8 stream results are in HANDOVER Section 14. |
+| Recognition model | `isl_mudra_combined_v8_desk_bilstm`: 314 words + "no sign"; 98.06% top-1 / 99.93% top-5 on 1,495 held-out clips in its model card. Test clips share signers/sessions with training; per-recording accuracy is about 97.5%. Communication also defaults to the 17-word mixed-source video model (45/51, 88.2%) and offers the 14-word ISL500 pilot (33/41, 80.5%). Neither video-model clip score estimates live-webcam accuracy; the weaker 26-class experiment is hidden from the live picker. v8 stream results are in HANDOVER Section 14. |
 | Static-sign recognition | Communication defaults to the 32-class phone-webcam still-pose prototype. The backend recognizes held poses continuously, with a 450 ms stability hold; only 10 labels have finite rejection thresholds. The phone model's exploratory held-out score was 13/73 (17.8%), not a live-camera accuracy estimate. The v8 sequence model and alphabet model remain unchanged. See [`docs/STATIC_SIGN_GLOSSARY.md`](docs/STATIC_SIGN_GLOSSARY.md). |
 | Live recognition (Communication) | *Words*: sign start/end detection, automatic word adding, spoken sentence, "How to sign it" examples; *Spell* and *Phrase* modes (below) |
 | New words from the Teach a sign page | Work immediately (few-shot), stored for retraining |

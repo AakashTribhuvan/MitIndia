@@ -29,6 +29,7 @@ import { ISL_VOCABULARY_LEXICON, buildMultilingualSentence, findISLLexiconItem, 
 import { analyzeExpression, FACE_UNAVAILABLE_EXPRESSION, INITIAL_EXPRESSION } from '../services/expressionAnalyzer'
 import MudraAvatarViewer from '../components/avatar/MudraAvatarViewer'
 import SignReference from '../components/SignReference'
+import ModelVideoExamplePanel from '../components/communicate/ModelVideoExamplePanel'
 import { useAccessibility } from '../context/AccessibilityContext'
 
 const AUTO_SPEAK_PAUSE_MS = 3000
@@ -133,13 +134,16 @@ export default function CommunicatePage() {
     { id: 'sequence', name: 'MUDRA word sequence' },
     { id: 'intro_static', name: 'Expanded introduction (static pose)' },
   ])
+  const [staticRecognitionModel, setStaticRecognitionModel] = useState('intro_static')
   const [recognitionModel, setRecognitionModel] = useState(() => {
-    const saved = readPref('mudra.recognition_model_v3', 'sequence')
-    return saved === 'auto' ? 'sequence' : saved
+    const saved = readPref('mudra.recognition_model_v4', 'common_word_video')
+    return saved === 'auto' ? 'common_word_video' : saved
   })
-  const dynamicModels = recognitionModels.filter((model) => !['intro_static', 'top10_v2'].includes(model.id))
+  const dynamicModels = recognitionModels.filter((model) => !['intro_static', 'top10_v2', 'signline_intro_video'].includes(model.id))
+  const staticModels = recognitionModels.filter((model) => ['intro_static', 'top10_v2'].includes(model.id))
   const effectiveRecognitionModel = dynamicModels.some((model) => model.id === recognitionModel) ? recognitionModel : 'sequence'
   const selectedRecognitionModel = recognitionModels.find((model) => model.id === effectiveRecognitionModel)
+  const selectedStaticModel = staticModels.find((model) => model.id === staticRecognitionModel)
   // Words the camera model knows, so people can check a word before signing it
   const [vocab, setVocab] = useState([])
   const { speechRate } = useAccessibility()
@@ -150,6 +154,12 @@ export default function CommunicatePage() {
     : ISL_VOCABULARY_LEXICON.filter((v) => RULE_SIGNS.includes(v.id))
   const [vocabOpen, setVocabOpen] = useState(false)
   const [referenceSign, setReferenceSign] = useState(null) // word whose training example is shown
+  const [isl500TestCases, setIsl500TestCases] = useState({ cases: [], accuracy: null, sample_count: 0 })
+  const [isl500TestCaseId, setIsl500TestCaseId] = useState('')
+  const [isl500TestCasesError, setIsl500TestCasesError] = useState('')
+  const [commonWordTestCases, setCommonWordTestCases] = useState({ cases: [], accuracy: null, sample_count: 0 })
+  const [commonWordTestCaseId, setCommonWordTestCaseId] = useState('')
+  const [commonWordTestCasesError, setCommonWordTestCasesError] = useState('')
   // Dynamic words, held static poses, fingerspelling, phrases, or all three sign classifiers together.
   const [inputMode, setInputMode] = useState('words')
   const inputModeRef = useRef('words')
@@ -179,7 +189,7 @@ export default function CommunicatePage() {
   }
   useEffect(() => {
     signRecognizer.setModel(effectiveRecognitionModel)
-    writePref('mudra.recognition_model_v3', recognitionModel)
+    writePref('mudra.recognition_model_v4', recognitionModel)
   }, [recognitionModel, effectiveRecognitionModel])
   useEffect(() => writePref('mudra.confidence_floor_v1', confidenceFloor), [confidenceFloor])
   useEffect(() => { letterSpeller.setConfidenceFloor(confidenceFloor) }, [confidenceFloor])
@@ -195,14 +205,47 @@ export default function CommunicatePage() {
         if (!active) return
         const models = payload.models || []
         setRecognitionModels(models)
-        const availableDynamic = models.filter((model) => !['intro_static', 'top10_v2'].includes(model.id))
+        const availableDynamic = models.filter((model) => !['intro_static', 'top10_v2', 'signline_intro_video'].includes(model.id))
+        const availableStatic = models.filter((model) => ['intro_static', 'top10_v2'].includes(model.id))
+        setStaticRecognitionModel((current) => availableStatic.some((model) => model.id === current)
+          ? current : availableStatic[0]?.id || 'intro_static')
         if (!availableDynamic.some((model) => model.id === recognitionModel)) {
-          setRecognitionModel(availableDynamic.find((model) => model.id === 'sequence')?.id || availableDynamic[0]?.id || 'sequence')
+          setRecognitionModel(availableDynamic.find((model) => model.id === 'common_word_video')?.id || availableDynamic.find((model) => model.id === 'isl500_video')?.id || availableDynamic.find((model) => model.id === 'sequence')?.id || availableDynamic[0]?.id || 'sequence')
         }
       })
       .catch((error) => console.warn('Could not load recognition model list:', error))
     return () => { active = false }
   }, [modelState.status])
+  useEffect(() => {
+    if (modelState.status !== 'online' || !['isl500_video', 'common_word_video'].includes(effectiveRecognitionModel)) return
+    let active = true
+    const commonWords = effectiveRecognitionModel === 'common_word_video'
+    const base = commonWords ? '/common-word/test-cases' : '/isl500/test-cases'
+    fetch(`${API_BASE_URL}${base}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Test videos are unavailable (${response.status}).`)
+        return response.json()
+      })
+      .then((payload) => {
+        if (!active) return
+        const cases = payload.cases || []
+        if (commonWords) {
+          setCommonWordTestCases({ ...payload, cases })
+          setCommonWordTestCaseId((current) => cases.some((item) => item.id === current) ? current : cases[0]?.id || '')
+          setCommonWordTestCasesError(cases.length ? '' : 'No held-out test videos are available on this server.')
+        } else {
+          setIsl500TestCases({ ...payload, cases })
+          setIsl500TestCaseId((current) => cases.some((item) => item.id === current) ? current : cases[0]?.id || '')
+          setIsl500TestCasesError(cases.length ? '' : 'No held-out test videos are available on this server.')
+        }
+      })
+      .catch((error) => {
+        if (!active) return
+        if (commonWords) setCommonWordTestCasesError(error.message)
+        else setIsl500TestCasesError(error.message)
+      })
+    return () => { active = false }
+  }, [modelState.status, effectiveRecognitionModel])
   useEffect(() => {
     if (modelState.status !== 'online') return
     fetch(`${API_BASE_URL}/labels?model=${encodeURIComponent(effectiveRecognitionModel)}`)
@@ -213,6 +256,11 @@ export default function CommunicatePage() {
   const vocabMatches = vocabQuery.trim()
     ? vocab.filter((v) => v.label.toLowerCase().includes(vocabQuery.trim().toLowerCase()))
     : vocab
+  const isCommonWordVideoModel = effectiveRecognitionModel === 'common_word_video'
+  const activeModelTestCases = isCommonWordVideoModel ? commonWordTestCases : isl500TestCases
+  const activeModelTestCaseId = isCommonWordVideoModel ? commonWordTestCaseId : isl500TestCaseId
+  const activeModelTestCasesError = isCommonWordVideoModel ? commonWordTestCasesError : isl500TestCasesError
+  const setActiveModelTestCaseId = isCommonWordVideoModel ? setCommonWordTestCaseId : setIsl500TestCaseId
   const changeRecognitionModel = (model) => {
     setRecognitionModel(model)
     signRecognizer.setModel(model)
@@ -382,7 +430,7 @@ export default function CommunicatePage() {
           : prev))
       }
     }
-    staticPoseRecognizer.setModel('intro_static')
+    staticPoseRecognizer.setModel(staticRecognitionModel)
     staticPoseRecognizer.onStatusChange = ({ status }) => {
       staticOnlineRef.current = status === 'online'
       setStaticModelOnline(staticOnlineRef.current)
@@ -414,7 +462,7 @@ export default function CommunicatePage() {
       staticPoseRecognizer.onStatusChange = null
       staticPoseRecognizer.reset()
     }
-  }, [commitToken])
+  }, [commitToken, staticRecognitionModel])
 
   useEffect(() => {
     if (inputMode !== 'auto') return undefined
@@ -832,15 +880,15 @@ export default function CommunicatePage() {
   }, [])
 
   return (
-    <div className="pt-6 lg:pt-10 pb-24 lg:pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <div className="pt-3 sm:pt-6 lg:pt-10 pb-24 lg:pb-16 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-4 sm:space-y-8">
       <style>{`
         @media (max-width: 767px) {
           .communicate-camera-panel {
             width: 100%;
             max-width: 100%;
-            aspect-ratio: auto;
-            height: clamp(480px, 72dvh, 680px);
-            min-height: 0;
+            aspect-ratio: 4 / 3;
+            height: min(75vw, 58dvh, 480px);
+            min-height: 220px;
           }
           .communicate-camera-panel video,
           .communicate-camera-panel canvas {
@@ -859,18 +907,18 @@ export default function CommunicatePage() {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-mudra-lavender-100 text-mudra-lavender-700 text-xs font-bold font-mono mb-1">
             <Radio className="w-3.5 h-3.5 text-mudra-lavender-600 animate-pulse" />
-            <span>2-WAY REAL-TIME COMMUNICATION BRIDGE</span>
+            <span>SIGNLINE COMMUNICATION</span>
           </div>
           <h1 className="font-display font-extrabold text-3xl sm:text-4xl text-mudra-indigo-900">
-            Communicate Hub
+            Sign and speak
           </h1>
           <p className="text-sm text-mudra-indigo-600 mt-1">
-            Seamless two-way bridge between Indian Sign Language gestures and spoken language.
+            Sign to speech, fingerspell, or use a phrase.
           </p>
         </div>
 
         {/* Mode Switcher Tabs */}
-        <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-white/90 border border-mudra-lavender-200 shadow-xs">
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-white/90 border border-mudra-lavender-200 shadow-xs">
           <button
             type="button"
             onClick={() => {
@@ -906,7 +954,7 @@ export default function CommunicatePage() {
 
       {/* MODE 1: SIGN TO SPEECH (Signer to Listener) */}
       {activeMode === 'sign-to-speech' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fadeIn">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 items-start animate-fadeIn">
           
           {/* Left: Live Webcam + Canvas Landmark Overlay */}
           <div className="lg:col-span-7 space-y-5">
@@ -931,13 +979,26 @@ export default function CommunicatePage() {
                     </button>
                   ))}
                 </div>
-                <button type="button" onClick={() => setMirrored((current) => {
-                  const next = !current
-                  writePref('mudra_camera_mirrored', next)
-                  return next
-                })} className="inline-flex items-center gap-1.5 rounded-xl bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm" aria-pressed={mirrored}>
-                  <FlipHorizontal className="h-4 w-4" aria-hidden="true" /> {mirrored ? 'Mirrored' : 'Mirror'}
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <button type="button" onClick={() => setMirrored((current) => {
+                    const next = !current
+                    writePref('mudra_camera_mirrored', next)
+                    return next
+                  })} className="inline-flex items-center gap-1.5 rounded-xl bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm" aria-pressed={mirrored}>
+                    <FlipHorizontal className="h-4 w-4" aria-hidden="true" /> {mirrored ? 'Mirrored' : 'Mirror'}
+                  </button>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] font-mono backdrop-blur-md">
+                    <span className={`h-2 w-2 rounded-full ${cameraActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    {cameraActive ? `LIVE · ${trackerFps} fps` : 'CAMERA OFF'}
+                  </span>
+                  {cameraActive && (
+                    <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] font-mono text-mudra-peach-300 backdrop-blur-md">
+                      {currentDetection.source === 'model'
+                        ? `Model · ${trackerDiag?.delegate || 'CPU'}`
+                        : currentDetection.source === 'manual' ? 'Manual entry' : 'Rules'}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <canvas
@@ -1024,26 +1085,6 @@ export default function CommunicatePage() {
                     : 'Move back a little: your chest and both hands should stay in view while you sign.'}
                 </div>
               )}
-
-              {/* Status Header */}
-              <div className="flex items-center justify-between z-20">
-                <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-xs">
-                  <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                  <span className="font-mono">{cameraActive ? 'LIVE TRACKING' : 'OFFLINE'}</span>
-                </div>
-
-                {cameraActive && (
-                  <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-xs font-mono text-mudra-peach-300">
-                    <span>
-                      {currentDetection.source === 'model'
-                        ? `Model · ${trackerFps} fps${trackerDiag?.delegate ? ` · ${trackerDiag.delegate}` : ''}`
-                        : currentDetection.source === 'manual'
-                        ? 'Manual entry'
-                        : `Rules · ${currentDetection.confidence ?? 0}%`}
-                    </span>
-                  </div>
-                )}
-              </div>
 
               {/* Bottom Controls */}
               {cameraActive && (
@@ -1164,8 +1205,8 @@ export default function CommunicatePage() {
           </div>
 
           {/* Right: Interpretation Panel & Speech Out */}
-          <div className="lg:col-span-5 space-y-5 lg:pt-0">
-            <div className="glass-card rounded-3xl p-5 sm:p-6 border border-mudra-lavender-200/80 shadow-lg space-y-7">
+          <div className="lg:col-span-5 min-w-0 space-y-4 sm:space-y-5 lg:pt-0">
+            <div className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-mudra-lavender-200/80 shadow-lg space-y-4 sm:space-y-6">
               <InputModeSwitch mode={inputMode} onChange={changeInputMode} />
 
               {inputMode === 'auto' && (
@@ -1174,10 +1215,10 @@ export default function CommunicatePage() {
                 </div>
               )}
 
-              {inputMode === 'words' && (
+              {['words', 'auto'].includes(inputMode) && (
                 <div className="space-y-2 rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3">
                   <label htmlFor="recognition-model" className="block text-xs font-bold text-mudra-indigo-700">
-                    Word recognition model
+                    {inputMode === 'auto' ? 'Dynamic word expert' : 'Word recognition model'}
                     <select
                       id="recognition-model"
                       value={recognitionModel}
@@ -1187,10 +1228,10 @@ export default function CommunicatePage() {
                     >
                       {dynamicModels.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name}
+                          {model.trained_words ? `${model.trained_words} words · ` : ''}{model.name}
                           {model.test_accuracy == null
                             ? ' · accuracy not measured'
-                            : ` · ${(model.test_accuracy * 100).toFixed(1)}% ${model.accuracy_split || 'held-out test'}`}
+                            : ` · ${(model.test_accuracy * 100).toFixed(1)}% / ${model.accuracy_samples || '?'} clips`}
                         </option>
                       ))}
                     </select>
@@ -1200,16 +1241,100 @@ export default function CommunicatePage() {
                   </p>
                   {['common_word_video', 'isl500_video'].includes(effectiveRecognitionModel) && (
                     <p className="text-[11px] leading-relaxed text-amber-900">
-                      Experimental dynamic model; scores are from held-out signers and do not estimate webcam accuracy.
+                      Video models are experimental. Scores use held-out signers and do not estimate webcam accuracy.
                     </p>
+                  )}
+                  {['isl500_video', 'common_word_video'].includes(effectiveRecognitionModel) && (
+                    <details className="mt-3 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70">
+                      <summary className="cursor-pointer px-3 py-3 text-xs font-bold text-indigo-950">
+                        Evaluation videos <span className="font-normal text-indigo-700">· {activeModelTestCases.sample_count || 'loading'} held-out clips</span>
+                      </summary>
+                      <div className="space-y-3 border-t border-indigo-200 p-3">
+                      <div>
+                        <p className="text-xs font-bold text-indigo-950">Compare a test sign with your camera attempt</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-indigo-800">
+                          {isCommonWordVideoModel
+                            ? `This 17-word model scored ${activeModelTestCases.accuracy == null ? 'an unreported score' : `${Math.round(activeModelTestCases.accuracy * 1000) / 10}%`} on ${activeModelTestCases.sample_count ? `${activeModelTestCases.sample_count} held-out clips` : 'its held-out test set'}. These exact clips let you compare the source signing with your own camera attempt.`
+                            : `The pilot scored ${activeModelTestCases.accuracy == null ? 'a score that is still loading' : `${Math.round(activeModelTestCases.accuracy * 1000) / 10}%`} on ${activeModelTestCases.sample_count || 'its'} held-out videos from three unseen signers. These exact clips let you compare the source signing with your own camera attempt.`}
+                        </p>
+                      </div>
+                      {activeModelTestCasesError ? (
+                        <p className="text-xs text-rose-700">{activeModelTestCasesError}</p>
+                      ) : activeModelTestCases.cases.length > 0 ? (() => {
+                        const testCase = activeModelTestCases.cases.find((item) => item.id === activeModelTestCaseId) || activeModelTestCases.cases[0]
+                        return <>
+                          <label className="block text-[11px] font-semibold text-indigo-900" htmlFor="word-model-test-case">
+                            Test clip ({activeModelTestCases.cases.length} held-out videos)
+                            <select id="word-model-test-case" value={testCase.id}
+                              onChange={(event) => setActiveModelTestCaseId(event.target.value)}
+                              className="mt-1 min-h-9 w-full rounded-lg border border-indigo-200 bg-white px-2 text-xs">
+                              {activeModelTestCases.cases.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.label.replaceAll('_', ' ')} · take {item.example_number}{item.prediction ? ` · ${item.correct ? 'model correct' : `model said ${item.prediction.replaceAll('_', ' ')}`}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <video key={testCase.id} controls playsInline preload="metadata"
+                            className="max-h-64 w-full rounded-lg bg-black"
+                            src={`${API_BASE_URL}${testCase.video_url}`}>
+                            Your browser does not support video playback.
+                          </video>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold text-indigo-950">Expected: {testCase.label.replaceAll('_', ' ')}</span>
+                            {testCase.prediction && <span className={testCase.correct ? 'font-semibold text-emerald-700' : 'font-semibold text-rose-700'}>
+                              Saved evaluation: {testCase.prediction.replaceAll('_', ' ')} {testCase.correct ? '✓' : '· incorrect'}
+                            </span>}
+                          </div>
+                          <button type="button" onClick={() => { if (!cameraActive) handleStartCamera() }}
+                            disabled={cameraActive || cameraLoading}
+                            className="w-full rounded-lg bg-indigo-900 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-800 disabled:cursor-default disabled:opacity-60">
+                            {cameraActive ? 'Camera is ready — try the sign now' : cameraLoading ? 'Starting camera…' : 'Start camera and try this sign'}
+                          </button>
+                        </>
+                      })() : <p className="text-xs text-indigo-700">Loading held-out test videos…</p>}
+                      </div>
+                    </details>
                   )}
                 </div>
               )}
 
-              {inputMode === 'static' && (
-                <div className="rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3 text-xs leading-relaxed text-mudra-indigo-700">
-                  Static pose model: hold a still sign shape for a moment. Its live-eligible classes are FOOD, HELP, I / ME / MINE, NICE, THANK, WHAT, YOU, DO, NAME and FROM. It does not classify motion or fingerspelling.
+              {['static', 'auto'].includes(inputMode) && (
+                <div className="space-y-2 rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3 text-xs leading-relaxed text-mudra-indigo-700">
+                  <label htmlFor="static-recognition-model" className="block font-bold text-mudra-indigo-800">
+                    Static pose model
+                    <select id="static-recognition-model" value={staticRecognitionModel}
+                      onChange={(event) => setStaticRecognitionModel(event.target.value)}
+                      className="mt-1 min-h-10 w-full rounded-xl border border-mudra-lavender-300 bg-white px-3 text-sm font-semibold text-mudra-indigo-950">
+                      {staticModels.map((model) => <option key={model.id} value={model.id}>
+                        {model.name}{model.test_accuracy == null ? '' : ` · ${(model.test_accuracy * 100).toFixed(1)}% / ${model.accuracy_samples || '?'} clips`}
+                      </option>)}
+                    </select>
+                  </label>
+                  <p>Hold a still sign shape. This model does not classify motion or fingerspelling. Live-webcam accuracy has not been measured.</p>
                 </div>
+              )}
+
+              {(
+                (['words', 'auto'].includes(inputMode) && ['sequence', 'common_word_video', 'isl500_video'].includes(effectiveRecognitionModel)) ||
+                inputMode === 'static' || inputMode === 'spell' || inputMode === 'phrase'
+              ) && (
+                <details className="rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3">
+                  <summary className="cursor-pointer text-xs font-bold text-mudra-indigo-900">Reference videos and examples</summary>
+                  <div className="mt-3">
+                    <ModelVideoExamplePanel modelId={
+                  inputMode === 'static' ? staticRecognitionModel
+                    : inputMode === 'spell' ? 'letters'
+                      : inputMode === 'phrase' ? 'phrases' : effectiveRecognitionModel
+                    } />
+                  </div>
+                </details>
+              )}
+              {inputMode === 'auto' && (
+                <details className="rounded-2xl border border-mudra-lavender-200 bg-white/80 p-3">
+                  <summary className="cursor-pointer text-xs font-bold text-mudra-indigo-900">Static-pose reference videos</summary>
+                  <div className="mt-3"><ModelVideoExamplePanel modelId={staticRecognitionModel} /></div>
+                </details>
               )}
 
               {['words', 'static', 'spell', 'auto'].includes(inputMode) && (
@@ -1292,9 +1417,21 @@ export default function CommunicatePage() {
                       : (currentDetection.label || readableSign(currentDetection.sign))}
                   </span>
                 </div>
+                {currentDetection.confidence > 0 && !['signing', 'no_hands'].includes(currentDetection.status) && (
+                  <div className="mt-2 max-w-sm" role="meter" aria-label="Recognition confidence"
+                       aria-valuemin={0} aria-valuemax={100} aria-valuenow={currentDetection.confidence}>
+                    <div className="mb-1 flex justify-between text-[11px] font-semibold text-mudra-indigo-600">
+                      <span>Recognition confidence</span><span>{currentDetection.confidence}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-mudra-lavender-100">
+                      <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-200"
+                           style={{ width: `${Math.min(100, Math.max(0, currentDetection.confidence))}%` }} />
+                    </div>
+                  </div>
+                )}
                 {currentDetection.status === 'signing' && currentDetection.candidate && (
                   <p className="text-xs text-mudra-indigo-600 mt-1">
-                    Looks like <strong>{currentDetection.candidate}</strong>… (finish the sign, then hold your hands still)
+                    Looks like <strong>{currentDetection.candidate}</strong>… finish the movement or pause briefly; the next clear movement starts the next sign.
                   </p>
                 )}
                 {!currentDetection.isUnknown && currentDetection.sign && currentDetection.sign !== 'UNKNOWN' && (
@@ -1327,7 +1464,7 @@ export default function CommunicatePage() {
                       ? modelState.status === 'online' && staticModelOnline
                       : modelState.status === 'online'
                     const label = inputMode === 'static'
-                      ? (online ? 'Static pose model · 10 live classes' : 'Static pose model offline')
+                      ? (online ? `${selectedStaticModel?.name || 'Static pose model'} · ${selectedStaticModel?.live_words ?? 0} live classes` : 'Static pose model offline')
                       : inputMode === 'auto'
                         ? (online ? 'Auto · dynamic, static and alphabet ready' : 'Auto · one or more models offline')
                         : modelState.status === 'online'
@@ -1335,6 +1472,8 @@ export default function CommunicatePage() {
                             ? `Word-video model · ${selectedRecognitionModel?.live_words ?? 17} experimental classes`
                             : effectiveRecognitionModel === 'isl500_video'
                               ? `ISL500 video model · ${selectedRecognitionModel?.live_words ?? 14} experimental classes`
+                              : effectiveRecognitionModel === 'signline_intro_video'
+                                ? `SignLine intro video model · ${selectedRecognitionModel?.live_words ?? 26} classes`
                               : `Dynamic word model · ${modelState.info?.num_signs ?? ''} words`
                           : modelState.status === 'checking' ? 'Connecting to recognition model...' : 'Offline: rule-based fallback, 8 signs'
                     return <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono font-semibold ${online ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
@@ -1574,7 +1713,7 @@ export default function CommunicatePage() {
 
       {/* MODE 2: SPEECH / TEXT TO 3D AVATAR (Listener to Signer) */}
       {activeMode === 'speech-to-sign' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fadeIn">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 items-start animate-fadeIn">
           
           {/* Left: Input & Speech Dictation */}
           <div className="lg:col-span-6 space-y-5">

@@ -15,6 +15,9 @@ const MODE = import.meta.env?.VITE_SIGN_MODEL || 'auto'
 const DEFAULT_MODEL = 'sequence'
 const WS_URL = API_BASE_URL.replace(/^http/, 'ws') + '/stream'
 const HEALTH_TIMEOUT_MS = 2500
+// Drop stale frames when inference falls behind; the next camera frame is fresher
+// and lets the segmenter resume from the current hand position instead of lagging.
+const MAX_BUFFERED_FRAME_BYTES = 12000
 
 const round = (v) => Math.round(v * 1e4) / 1e4
 
@@ -109,6 +112,7 @@ class SignRecognizer {
     if (this.status !== 'online') return
     if (!this.ws) this._open(results.width || 640, results.height || 480)
     if (!this.started || this.ws.readyState !== WebSocket.OPEN) return
+    if (this.ws.bufferedAmount > MAX_BUFFERED_FRAME_BYTES) return
     const now = performance.now()
     if (results.diag && now - (this.diagSentAt || 0) > 3000) {
       // Tracking diagnostics, kept with a saved session (MUDRA_SESSION_DIR) to explain low frame rates

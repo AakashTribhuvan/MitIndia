@@ -38,10 +38,16 @@ The split locks Users 013-015 for final testing. Classifier and temporal-window 
 four-fold grouped validation across Users 001-012; mirrored augmentation is applied only to each
 training fold. The current calibrated linear SVM scored 80.5% accuracy / 0.79 macro-F1 on 41
 clips from the three held-out signers (the `I` clip for User014 had no usable hand track and was
-excluded). This is a small signer-held-out clip result, not a live-webcam estimate. The model is
-saved to ignored `data/processed/isl500_sentence_subset/model/` and is available in the
-Communication word-model menu as **ISL500 video pilot** when that local artifact exists. It does
-not replace the deployed sequence model.
+excluded). This is a small signer-held-out clip result, not a live-webcam estimate. Training saves
+a working copy to ignored `data/processed/isl500_sentence_subset/model/`; the inference artifact is
+packaged at `app/backend/models/isl500_video_pilot/model.joblib` and is available from a fresh clone
+in the Communication word-model menu. It does not replace the deployed sequence model.
+
+Selecting the pilot in Communication also provides a held-out clip viewer. It lists the 41 exact test
+videos with the expected gloss and the saved offline prediction. Watch a source clip, then try the same
+action in the app's live camera; those webcam attempts are separate and are not included in the 80.5%
+offline score. The test-video endpoints are available only for clip IDs in both the evaluation report
+and the locked test split. The source videos remain local and are not committed to Git.
 
 Current labels: `FOOD`, `HELP`, `I`, `MYSELF`, `NICE`, `NO`, `THANKYOU`, `WATER`, `WHAT`, `YOU`,
 `HELLO`, `WE`, `STUDENT`, `THIS`. `I`, `MYSELF`, and `NO` are available dataset labels, not
@@ -185,3 +191,32 @@ so near-constant jitter dimensions are not amplified.
 - INCLUDE's CSV `Word` column is inconsistent ("goodmorning" vs "Good Morning") and some clips
   sit in `Extra/` subfolders; labels come from the word folder (`FilePath` part 2).
 - Pose depth (z) is noisy; consider clipping or dropping z during Phase 2 ablations.
+
+## SignLine intro + everyday video model
+
+This is a separate local 26-class video-word experiment. It uses the shared body/face/hand
+tracker and the live `/stream` feature schema. Its 390 ISL500 clips cover 15 signers per class;
+Users 001–012 are training/validation, Users 013–015 are the locked final test. There are also
+115 accepted CISLR/INCLUDE clips available in a training-only pool; grouped CV favored the
+ISL500-only recipe, so those clips are excluded by default (`--include-extra-training` opts in).
+It includes exact dataset glosses
+for HELLO, MYSELF, I, WE, YOU, STUDENT, THIS, GOOD_MORNING, GOOD_AFTERNOON, FOOD, WATER, PLEASE,
+THANKYOU, YES, NO, HELP, EAT, DRINK, FRIEND, SCHOOL, TODAY, WHAT, WHERE, GO, NICE, and GOOD.
+The plural request “Students” maps to the dataset gloss STUDENT. ARE, FROM, PUNE, INVENTORS, AND,
+IS, SIGN, and LINE are not part of this model because the available 15-signer source did not have
+those exact labels; the deployed sequence model remains separately selectable for its own classes.
+The 15 added everyday words are a practical selection from the available labeled data, not an
+official frequency-ranked vocabulary list.
+
+```powershell
+app/backend/.venv/Scripts/python.exe training/scripts/download_signline_intro_terms.py
+app/backend/.venv/Scripts/python.exe training/scripts/prepare_signline_intro_data.py
+app/backend/.venv/Scripts/python.exe training/scripts/train_signline_intro_model.py prepare --workers 4
+app/backend/.venv/Scripts/python.exe training/scripts/train_signline_intro_model.py train
+```
+
+The downloaded MP4s, staged hard links, landmark NPZs, model joblib, and reports remain in ignored
+local data/ and experiments/ paths. With its 62.3% score on 77 held-out clips, this experiment is
+hidden from the live model selector until it improves; its local artifacts are retained. The upstream ISL500 card marks the source for
+academic/research use and says to contact the authors for commercial use; do not redistribute
+source videos or generated artifacts without checking the applicable terms.

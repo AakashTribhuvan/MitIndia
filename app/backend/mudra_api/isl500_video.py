@@ -2,14 +2,133 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
+import json
+from itertools import pairwise
 from pathlib import Path
 
 import joblib
 import numpy as np
+from fastapi import HTTPException
+from fastapi.responses import FileResponse
 from mudra_ml.preprocessing.sequence import LandmarkSequence
 from mudra_ml.streaming import Frame, SegmenterConfig, SignSegmenter
 
 from mudra_api.static_top10 import FEATURE_SCHEMA, feature_from_frame
+
+
+class ISL500TestCases:
+    """Expose only video paths explicitly present in the locked ISL500 test report."""
+
+    def __init__(self, report_path: Path, split_path: Path, url_prefix: str = "/isl500/test-cases"):
+        self.cases: dict[str, dict] = {}
+        self.accuracy: float | None = None
+        self.sample_count = 0
+        if not report_path.is_file() or not split_path.is_file():
+            return
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            predictions = report.get("test_predictions", [])
+            self.accuracy = report.get("test_accuracy")
+            self.sample_count = int(report.get("test_samples", len(predictions)))
+            with split_path.open(newline="", encoding="utf-8-sig") as stream:
+                test_rows = {
+                    row["sample_id"]: row
+                    for row in csv.DictReader(stream)
+                    if row.get("split") == "test"
+                }
+            per_word: dict[str, int] = {}
+            for item in predictions:
+                sample_id = str(item.get("sample_id", ""))
+                row = test_rows.get(sample_id)
+                if not row:
+                    continue
+                media = Path(row.get("raw_path", "")).resolve()
+                if not media.is_file() or media.suffix.lower() not in {".mp4", ".mov", ".avi", ".webm"}:
+                    continue
+                label = str(item.get("truth", row.get("label", ""))).upper()
+                number = per_word.get(label, 0) + 1
+                per_word[label] = number
+                case_id = hashlib.sha256(sample_id.encode("utf-8")).hexdigest()[:20]
+                self.cases[case_id] = {
+                    "id": case_id,
+                    "label": label,
+                    "prediction": str(item.get("prediction", "")).upper(),
+                    "correct": label == str(item.get("prediction", "")).upper(),
+                    "example_number": number,
+                    "video_url": f"{url_prefix}/{case_id}/video",
+                    "_path": media,
+                }
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            log_message = f"Could not load ISL500 test cases: {exc}"
+            # Optional evaluation media must never prevent the API from starting.
+            import logging
+            logging.getLogger("mudra_api").warning(log_message)
+
+    def list(self) -> dict:
+        cases = [
+            {key: value for key, value in case.items() if not key.startswith("_")}
+            for case in self.cases.values()
+        ]
+        return {"accuracy": self.accuracy, "sample_count": self.sample_count, "cases": cases}
+
+    def video(self, case_id: str) -> FileResponse:
+        case = self.cases.get(case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Test video not found.")
+        return FileResponse(case["_path"], media_type="video/mp4")
+
+
+class CommonWordVideoTestCases:
+    """Serve the exact held-out clips used for the common-word video model score."""
+
+    def __init__(self, split_path: Path, accuracy: float | None):
+        self.cases: dict[str, dict] = {}
+        self.accuracy = accuracy
+        self.sample_count = 0
+        if not split_path.is_file():
+            return
+        try:
+            with split_path.open(newline="", encoding="utf-8-sig") as stream:
+                rows = [row for row in csv.DictReader(stream) if row.get("split") == "test"]
+            per_word: dict[str, int] = {}
+            for row in rows:
+                sample_id = str(row.get("sample_id", ""))
+                media = Path(row.get("raw_path", ""))
+                if not media.is_absolute():
+                    media = Path(__file__).resolve().parents[3] / media
+                media = media.resolve()
+                if not sample_id or not media.is_file() or media.suffix.lower() not in {".mp4", ".mov", ".avi", ".webm"}:
+                    continue
+                label = str(row.get("label", "")).upper()
+                per_word[label] = per_word.get(label, 0) + 1
+                case_id = hashlib.sha256(sample_id.encode("utf-8")).hexdigest()[:20]
+                self.cases[case_id] = {
+                    "id": case_id,
+                    "label": label,
+                    "source": str(row.get("source", "")),
+                    "example_number": per_word[label],
+                    "video_url": f"/common-word/test-cases/{case_id}/video",
+                    "_path": media,
+                }
+            self.sample_count = len(self.cases)
+        except (OSError, ValueError, KeyError, TypeError, csv.Error) as exc:
+            import logging
+            logging.getLogger("mudra_api").warning("Could not load common-word test cases: %s", exc)
+
+    def list(self) -> dict:
+        cases = [
+            {key: value for key, value in case.items() if not key.startswith("_")}
+            for case in self.cases.values()
+        ]
+        return {"accuracy": self.accuracy, "sample_count": self.sample_count, "cases": cases}
+
+    def video(self, case_id: str) -> FileResponse:
+        case = self.cases.get(case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Test video not found.")
+        return FileResponse(case["_path"], media_type="video/mp4")
 
 
 def _palm_directions(hands: np.ndarray, present: np.ndarray) -> np.ndarray:
@@ -67,7 +186,7 @@ def temporal_features(sequence: LandmarkSequence, width: int, height: int, descr
     bins = int(descriptor.removeprefix("bins"))
     edges = np.linspace(0, len(matrix), bins + 1).round().astype(int)
     parts = []
-    for begin, finish in zip(edges[:-1], edges[1:]):
+    for begin, finish in pairwise(edges):
         block = matrix[begin : max(begin + 1, finish)]
         parts.extend((block.mean(axis=0), block.std(axis=0)))
     return np.concatenate(parts).astype(np.float32), float(valid[start : end + 1].mean())
@@ -110,8 +229,10 @@ class ISL500WordModel:
 class ISL500VideoStreamingRecognizer:
     """Segment dynamic sign motion and classify the full trajectory once it ends."""
 
-    def __init__(self, model: ISL500WordModel, cfg: SegmenterConfig, width: int, height: int):
+    def __init__(self, model: ISL500WordModel, cfg: SegmenterConfig, width: int, height: int,
+                 model_id: str = "isl500_video"):
         self.model, self.width, self.height = model, width, height
+        self.model_id = model_id
         self.segmenter = SignSegmenter(cfg, width, height)
         self.last_word: tuple[str, float] | None = None
 
@@ -138,7 +259,7 @@ class ISL500VideoStreamingRecognizer:
             result = {**result, "status": "duplicate", "sign": None}
         elif sign:
             self.last_word = (sign, frame.t)
-        result["model"] = "isl500_video"
+        result["model"] = self.model_id
         result["frames_received"] = segment.num_frames
         span = (float(segment.timestamps_ms[-1]) - float(segment.timestamps_ms[0])) / 1000
         stats = {

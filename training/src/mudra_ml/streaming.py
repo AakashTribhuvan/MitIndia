@@ -24,9 +24,11 @@ from mudra_ml.preprocessing.sequence import LandmarkSequence
 @dataclass
 class SegmenterConfig:
     raise_y: float = 1.5  # wrist higher than this many shoulder-widths below the shoulder line = raised
-    speed: float = 1.0  # wrist speed (shoulder-widths per second) that counts as movement
+    speed: float = 1.2  # normalized wrist/whole-hand speed that starts movement
+    motion_release_speed: float = 0.45  # lower stop threshold prevents motion-state flicker
+    motion_deadband: float = 0.02  # ignore small landmark displacement caused by tracker jitter
     on_s: float = 0.15  # continuous activity needed to start a sign
-    off_s: float = 0.35  # continuous rest needed to end a sign
+    off_s: float = 0.2  # continuous rest needed to end a sign
     pad_pre_s: float = 0.3  # context kept before the detected start (training clips start at rest)
     pad_post_s: float = 0.2
     min_sign_s: float = 0.3  # shorter bursts are ignored (fidgets, detection glitches)
@@ -35,12 +37,12 @@ class SegmenterConfig:
     commit_threshold: float | None = None  # whole-sign confidence needed to add a word (None = model card value)
     margin: float = 0.0  # top-1 must beat top-2 by this much (look-alike signs become "uncertain")
     tta: int = 1  # smoothing: classify this many slightly different cuts of the sign and average them
-    cooldown_s: float = 1.0  # the same word is not added again within this time (double triggers)
-    provisional_s: float = 0.5  # while signing, send a live guess this often (UI only, never committed)
+    cooldown_s: float = 0.25  # same-word duplicate suppression (different words are never delayed)
+    provisional_s: float = 0.8  # while signing, send a live guess this often (UI only, never committed)
     # Parked hands: at a desk in front of a close webcam the hands rest *in view*, where they always
     # count as raised. Hands that stay still this long count as resting wherever they are; the rest
     # starts when the stillness began, and only movement starts the next sign. 0 = off.
-    still_s: float = 0.0
+    still_s: float = 0.4
     still_speed: float = 0.5  # mean speed of the hand's 21 points (shoulder widths / s) below which it is still
     still_window_s: float = 0.25  # speed for stillness is measured over this span, so tracking jitter does not grow with fps
     still_below_y: float = -10.0  # parking only applies to hands lower than this (shoulder widths below the shoulder line)
@@ -86,6 +88,7 @@ class SignSegmenter:
         self.sign_start: float | None = None
         self.body: tuple[np.ndarray, float] | None = None  # shoulder centre, shoulder width
         self.point_hist: list[deque] = [deque(), deque()]  # (t, points) per hand over the last still_window_s
+        self.motion_latched = [False, False]  # movement uses separate start/release thresholds
         self.still_since: float | None = None  # all visible hands still (and low enough) since then
         self.parked = False
         self.pending: tuple[float, float] | None = None  # (start, end) of a held-back short piece
@@ -103,6 +106,7 @@ class SignSegmenter:
         for h in range(2):
             if not f.present[h]:
                 self.point_hist[h].clear()
+                self.motion_latched[h] = False
                 continue
             points = f.hands[h, :, :2] * [self.aspect, 1]
             wrist = points[schema.WRIST]
@@ -113,11 +117,22 @@ class SignSegmenter:
                 height = (wrist[1] - c[1]) / w
                 raised = raised or height < self.cfg.raise_y
                 hist = self.point_hist[h]
-                # wrist speed over >= 0.1 s (the previous frame at low fps): at 30 fps frame-to-frame
-                # tracking jitter alone would read as movement
+                # motion over >= 0.1 s (the previous frame at low fps): frame-to-frame
+                # tracking jitter alone should not be enough to start movement
                 ref = next(((t0, p0) for t0, p0 in reversed(hist) if f.t - t0 >= MOVE_SPAN_S), hist[0] if hist else None)
                 if ref is not None and f.t > ref[0]:
-                    moving = moving or np.linalg.norm(wrist - ref[1][schema.WRIST]) / w / (f.t - ref[0]) > self.cfg.speed
+                    elapsed = f.t - ref[0]
+                    wrist_delta = float(np.linalg.norm(wrist - ref[1][schema.WRIST])) / w
+                    hand_delta = float(np.linalg.norm(points - ref[1], axis=1).mean()) / w
+                    # Use both whole-hand travel and wrist travel, then ignore a small
+                    # normalized displacement deadband before converting delta to speed.
+                    delta = max(wrist_delta, hand_delta)
+                    motion_speed = max(0.0, delta - self.cfg.motion_deadband) / elapsed
+                    if motion_speed >= self.cfg.speed:
+                        self.motion_latched[h] = True
+                    elif motion_speed <= self.cfg.motion_release_speed:
+                        self.motion_latched[h] = False
+                    moving = moving or self.motion_latched[h]
                 while len(hist) > 1 and f.t - hist[1][0] >= self.cfg.still_window_s:
                     hist.popleft()
                 if height < self.cfg.still_below_y:

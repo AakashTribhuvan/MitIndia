@@ -6,13 +6,13 @@
 
 | Field | Value |
 |---|---|
-| Document version | 11 |
-| Last updated | 2026-10-18 |
-| Last updated at commit | `4a145a8` (feature changes; this handover update follows) |
-| Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); experimental `isl500_video` (14 isolated words; signer-held-out 80.5% accuracy); letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
+| Document version | 15 |
+| Last updated | 2026-10-19 |
+| Last updated at commit | `d9de175` |
+| Deployed models | words: `app/backend/models/isl_mudra_combined_v8_desk_bilstm` (314 words + `_BACKGROUND_`); selectable video models: mixed-source `common_word_video` (17 isolated words; 45/51, 88.2%) and `isl500_video` (14 isolated words; 33/41, 80.5%); the local 26-class `signline_intro_video` experiment (48/77, 62.3%) is hidden from the live selector; letters: `isl_letters_v1` (A-Z); phrases: `isl_phrases_v1_bilstm` (99) |
 | Static words | Communication defaults to the 32-label phone-webcam model artifact. Its `/stream` adapter predicts each held static pose with a 450 ms stability hold, matching the phone prototype's recognition timing. The source model's exploratory held-out score was 13/73 (17.8%), not a live-camera estimate; only 10 labels have finite rejection thresholds. The v8 sequence and alphabet models remain unchanged. See `docs/STATIC_SIGN_GLOSSARY.md`. |
 | Public demo URL | [https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test](https://mudra-camera-gateway.aakashtribhuvan2006.workers.dev/model-test). The Worker redirects to the active Quick Tunnel; it is not a permanent host for the local app. |
-| Public demo status | Rechecked 2026-10-18: `/models` returns `isl500_video` with 14 live words through the public Worker; landing page, `/health`, 314 `/labels`, `/model`, and secure `/stream` WebSocket also passed. `start_all.bat` starts/reuses the API and frontend, then opens the Quick Tunnel/Worker launcher. Keep all service windows open. |
+| Public demo status | Rechecked 2026-10-19: the public Worker redirects `/models` to the active Quick Tunnel and now lists `common_word_video` and `isl500_video` but omits the 26-class experiment. Earlier checks also covered landing page, `/health`, 314 `/labels`, `/model`, and secure `/stream`. `start_all.bat` starts/reuses the API and frontend, then opens the Quick Tunnel/Worker launcher. Keep all service windows open. |
 | Live settings | `training/configs/streaming.json` (commit threshold 0.7), `training/configs/fewshot.json` |
 | Tests | Current focused check: backend API 14 passed / 5 skipped; frontend 15 passed; static grouped-split tests 4 passed. |
 | Repository | `https://github.com/AakashTribhuvan/MitIndia` (requested destination; feature branch `work/static-landmark-tracking`); earlier MUDRA history is recorded below |
@@ -140,14 +140,16 @@ build a sentence and speak it.
 | Accounts and roles | **Demo only** | no server accounts or passwords; role kept in the browser; anyone can open Admin (Section 16) |
 | Game Mode | Working (local) | 70 lessons over the 314 words, real recorded examples, quizzes, XP / streak / badges in localStorage; no leaderboard (needs accounts) |
 | Recognition model v6 | Deployed | clip accuracy 97.4-99.4% on held-out test (Section 13), **same signers and sessions as training** |
-| ISL500 14-word video pilot | Deployed experimentally | Selectable as `isl500_video` in Communication; 80.5% on 41 clips from 3 locked signers, not a live-webcam estimate |
+| Common-word video model | Deployed experimentally; Communication default | Mixed-source training; 17 words; re-measured at 45/51 (88.2%) on its signer-held-out clip test; webcam accuracy is not measured |
+| ISL500 14-word video pilot | Deployed experimentally | Selectable as `isl500_video` in Communication; re-measured at 33/41 (80.5%) on 3 locked signers, not a live-webcam estimate |
+| SignLine intro + everyday video model | Local experiment, shelved from live selector | 26 words; re-measured at 48/77 (62.3%) on locked Users 013-015; held-out viewer and training files remain local for later review; no live-webcam measurement |
 | Continuous-stream recognition (simulated live use) | Working in benchmark | 90-98% correct, 0-2.2% wrong on held-out streams |
 | Close-up laptop-webcam framing | Handled in benchmark | 90.0-90.6% correct (simulated close-up) |
 | New recording sessions / new people | Weak | 66.7% clip accuracy on unseen INCLUDE sessions |
 | **Real live use (developer's webcam)** | **Failing** | last session: 0 of 11 signs recognised; ~6.5 fps tracking; most signs hit the 6 s cap |
 | Few-shot new words (Record page) | Working | 79.5% recognised from 3 examples (queries from the same sessions as the examples), 0.14% of known words taken over |
 | Honesty of reported numbers | Audited 2026-10-13 | numbers reproduce; their caveats are in Section 13 and `docs/AUDIT_2026-10-13.md` |
-| App words NAMASTE, WATER, HELP, YES, NO, GOODBYE, HOME, PERSON | Not in the model | no training data; can be recorded on the Record page |
+| App words NAMASTE, WATER, HELP, YES, NO, GOODBYE, HOME, PERSON | Not in v8 | water/help/yes/no exist in selectable experimental video models; the other labels need data or Record-page examples |
 | Practice-page coach | Rule-based, 8 signs | `islClassifier.js`; not the trained model |
 | **Fingerspelling letters A-Z** (Communication *Spell*, Learning, Game Mode) | Working, not measured live | 70.9% top-1 / 83.8% top-3 on held-out photo groups; 93.8% precision when it answers (54% of photos). `docs/SIGN_LIBRARY.md` |
 | **Phrases** (99, Communication *Phrase*, Learning, Game Mode) | Working as a choice of top guesses | 58.3% top-1 / 81.3% top-5 on held-out videos (same signers); the user always picks the phrase |
@@ -407,6 +409,14 @@ available / Coming soon / Error), never colour alone.
 |---|---|---|
 | `GET /` | identity | `project`, `api_version`, `docs` |
 | `GET /health` | liveness | `status`, `model_loaded`, `model`, `num_signs` (excludes `_` classes), `device`, `error`, `custom_words` |
+| `GET /isl500/test-cases` | ISL500 pilot evaluation examples | locked test clip metadata: opaque `id`, expected `label`, offline `prediction`, `correct`, and `video_url`; videos are included only when referenced by the saved test report and locked test split |
+| `GET /isl500/test-cases/{case_id}/video` | stream an ISL500 test clip | inline video response; ID must map to a locked test-set prediction |
+| `GET /signline-intro/test-cases` and `/signline-intro/test-cases/{case_id}/video` | list/stream SignLine intro model held-out examples | only clips present in its locked test split and saved evaluation report |
+| `GET /common-word/test-cases` | common-word video model evaluation examples | locked test clip metadata: opaque `id`, expected `label`, source, and `video_url`; clips are restricted to the test split |
+| `GET /common-word/test-cases/{case_id}/video` | stream a common-word test clip | inline video response; ID must map to a locked test-split clip |
+| `GET /model-video-examples?model_id={id}` | list words with local video examples for a model | `available_words[]`; list is limited to the selected model vocabulary and available local video sources |
+| `GET /model-video-examples?model_id={id}&sign={gloss}` | show matching model/reference clips | `clips[]` with opaque `id`, source, role, note and `video_url`; reference clips are distinguished from evaluation clips; alphabet returns no videos because it uses still photos |
+| `GET /model-video-examples/{model_id}/{clip_id}/video` | stream an allowed local reference clip | inline video response; ID must be loaded in the current API process |
 | `GET /models` | runtime model selector | `models[]`: available backend model `id`, `name`, `trained_words`, `live_words`, `experimental`, and measured `test_accuracy` with split/sample metadata when present; includes optional static/video models only when local artifacts are installed |
 | `GET /labels` | vocabulary | `count`, `labels[]`: `sign`, `label` (readable), `has_reference`, `test_correct`, `test_clips` (from the model card) |
 | `GET /model` | model card minus stats/classes | card fields + `num_signs`, `active_threshold` |
@@ -471,6 +481,8 @@ Backend environment variables (`app/backend/mudra_api/settings.py`, `main.py`), 
 | `MUDRA_SESSION_DIR` | unset (off) | opt-in: save each live `/stream` session's landmarks + client diagnostics as `.npz` for `training/scripts/replay_session.py`; needs the signer's consent |
 | `MUDRA_LETTERS_MODEL_DIR` / `MUDRA_LETTERS_LANDMARKS` | `app/backend/models/isl_letters_v1` / `data/processed/landmarks/letters` | letter model; local alphabet-photo landmarks for letter examples |
 | `MUDRA_PHRASES_MODEL_DIR` / `MUDRA_PHRASES_SPLIT` | `app/backend/models/isl_phrases_v1_bilstm` / `data/metadata/splits/phrases_v1/train.csv` | phrase model; split whose clips are phrase examples |
+| `MUDRA_PHRASE_VIDEO_DIR` | `../MudraPhoneWebcam/training_data/Videos_Sentence_Level` | optional phrase source clips for the model example browser; source split is not inferred |
+| `MUDRA_COMMON_WORD_VIDEO_TRAIN_SPLIT` | `data/metadata/splits/common_word_videos/train.csv` | matching reference videos for overlapping words in the broad/static models |
 | `MUDRA_REFERENCE_SPLIT` | `data/metadata/splits/combined_words_v3/train.csv` | where reference examples come from |
 
 Frontend (`app/frontend/.env`, Vite): `VITE_API_URL` (default `http://localhost:8000`; Vite proxies `/models` and `/static-reference` to the API),
@@ -533,7 +545,7 @@ are padded so hands are never dropped.
 
 ### Experimental isolated-word video pilot (`isl500_video`)
 
-- Optional local artifact: `data/processed/isl500_sentence_subset/model/isl500_word_model_v1.joblib`;
+- Packaged artifact: `app/backend/models/isl500_video_pilot/model.joblib`;
   settings key `MUDRA_ISL500_VIDEO_MODEL`. It is loaded at backend startup and exposed in `/models`
   only when present. It is selectable in Communication and does not replace the deployed 314-word model.
 - 14 classes from ISL500/ISL-DATA videos; 210 source clips from 15 signers, with one clip excluded
@@ -543,8 +555,41 @@ are padded so hands are never dropped.
   and Users 013-015 stay locked for final test. Final result: 33/41 (80.5%) top-1 clip accuracy,
   macro-F1 0.794; grouped CV mean 86.9%. Three held-out clips per word (two for `I`) make these
   per-class results highly uncertain. This is not live-webcam accuracy and gloss variants need ISL review.
-- This is a local/Quick-Tunnel experimental artifact, not committed in the repository (`data/processed/`
-  is ignored). A fresh clone must train or receive the artifact before the option can load.
+- The trained model is committed for use on another PC. Source videos and landmark arrays remain local;
+  the held-out example viewer therefore needs the local dataset split and videos.
+- **Accuracy method and practice viewer:** videos were tracked offline; each usable clip was cropped to
+  its tracked hand-active span, sampled to 12 frames and converted to the live 229D body/face/hand
+  features before classification. Users 001-012 formed the training/model-selection pool; Users
+  013-015 were untouched until the final 41-clip test (one `I` clip lacked usable hand tracks). This
+  measures offline clip classification, not webcam tracking or live segmentation. Selecting the pilot
+  in Communication exposes the exact test clips with the saved expected label and prediction; a user
+  can play one and then try the action with the live camera. User attempts are not added to the score.
+  Original test videos remain local and are served through the active local backend/tunnel; they are not
+  committed to Git.
+
+### SignLine introduction and everyday words (`signline_intro_video`)
+
+- Separate packaged artifact: `app/backend/models/signline_intro_video/model.joblib`,
+  loaded using `MUDRA_SIGNLINE_INTRO_MODEL`. Its `/labels`, `/stream`, train-video reference and locked
+  test-video routes remain available locally, but it is intentionally omitted from `/models` and the
+  live picker because its held-out score was lower than the 14-word pilot. It does not replace v8.
+- 26 classes: `DRINK, EAT, FOOD, FRIEND, GO, GOOD, GOOD_AFTERNOON, GOOD_MORNING, HELLO, HELP, I,
+  MYSELF, NICE, NO, PLEASE, SCHOOL, STUDENT, THANKYOU, THIS, TODAY, WATER, WE, WHAT, WHERE, YES, YOU`.
+  `STUDENT` is the available dataset gloss for the requested “Students.” Exact clips were unavailable for
+  `ARE, FROM, PUNE, INVENTORS, AND, IS, LINE`; `SIGN` exists in the separate v8 vocabulary but has no
+  15-signer clip set for this model.
+- 390 ISL500 clips (15 signers per class); Users 001-012 are train/CV and Users 013-015 are locked test.
+  The final selected descriptor is 12-frame flat features + linear SVM (C=0.01), chosen by grouped CV.
+  It scored 48/77 (62.3%) top-1, macro-F1 0.596 on the held-out clips; one `I` test clip had no usable
+  hand landmarks. This is offline clip accuracy, not live webcam accuracy. The 115 accepted extra
+  CISLR/INCLUDE train clips were left out because adding them lowered grouped-CV accuracy from 75.0%
+  to 60.5%; the model uses the ISL500-only fit. Whole-clip hand coverage was below 0.5 on 349/390
+  source videos; active-span cropping helps, but missed hand frames likely limit accuracy.
+- Matching train clips are served by `GET /model-video-examples?model_id=signline_intro_video`; held-out
+  examples are served by `/signline-intro/test-cases`. Videos, landmarks, report, and split remain local.
+  The packaged model weights derive from ISL500/ISL-DATA, whose dataset card limits use to research and
+  academic purposes and requests contacting the authors for commercial use. Keep that restriction with
+  copies of the model.
 
 `mudra_ml/models/sequence_model.py` (`SequenceClassifier`, built by `build_model(ModelConfig)`):
 
@@ -581,9 +626,9 @@ input [B, 24, 162]
 | Setting | Value | Meaning |
 |---|---|---|
 | `raise_y` | 1.0 | a wrist higher than 1.0 shoulder widths below the shoulder line counts as raised |
-| `speed` | 2.0 | wrist speed (shoulder widths / s) that counts as moving |
+| `speed` | 1.2 | normalized wrist / whole-hand landmark speed (shoulder widths / s) that starts movement |
 | `on_s` | 0.05 | continuous activity needed to start a sign |
-| `off_s` | 0.4 | continuous rest needed to end a sign |
+| `off_s` | 0.2 | continuous rest needed to end a sign |
 | `pad_pre_s`, `pad_post_s` | 0.3, 0.2 | context added before / after the detected sign |
 | `min_sign_s` | 0.3 | shorter activity → `too_short` |
 | `max_sign_s` | 6.0 | a sign running this long is classified anyway (`reason: max_length`) |
@@ -591,11 +636,13 @@ input [B, 24, 162]
 | `commit_threshold` | 0.7 | whole-sign probability needed for `ok` (chosen on validation streams) |
 | `margin` | 0.0 | required top-1 minus top-2 gap |
 | `tta` | 1 | number of slightly shifted cuts averaged (1 = just the segment) |
-| `cooldown_s` | 1.0 | the same word is not added twice within this time |
-| `provisional_s` | 0.5 | interval of live guesses while signing |
-| `still_s` | 0.6 | parked hands: visible hands still this long count as resting wherever they are (0 = off); the rest starts when the stillness began, and only movement starts the next sign |
+| `cooldown_s` | 0.25 | the same word is not added twice within this time |
+| `provisional_s` | 0.8 | interval of live guesses while signing |
+| `motion_release_speed` | 0.45 | lower movement threshold that releases the movement latch |
+| `motion_deadband` | 0.02 | normalized landmark displacement ignored as tracker jitter |
+| `still_s` | 0.4 | parked hands: visible hands still this long count as resting wherever they are (0 = off); the rest starts when the stillness began, and only movement starts the next sign |
 | `still_speed` | 0.5 | mean speed of a hand's 21 points (shoulder widths / s) below which it is still |
-| `still_window_s` | 0.25 | span over which stillness speed is measured (so tracking jitter does not grow with fps); "moving" uses wrist speed over ≥ 0.1 s |
+| `still_window_s` | 0.25 | span over which stillness speed is measured (so tracking jitter does not grow with fps); motion compares wrist and whole-hand delta over ≥ 0.1 s |
 | `still_below_y` | 0.0 | parking only applies to hands below the shoulder line |
 | `still_keep_s` | 0.0 (off) | a sign ended by stillness keeps this much of the still part. Validation, 10 fps, 0.4 s: normal 93.2 → 94.5%, close-up 90.3 → 91.1%, desk 73.9 → 74.6% correct (wrong +0.3 on desk); not confirmed on test, not enabled |
 | `join_short_s` | 0.5 | a piece shorter than this that ends by stillness is held back (`too_short`, reason `fragment`); if movement resumes within `join_gap_s`, the next sign starts from the piece's start. Validation, 10 fps: within ±0.6 points; fixed the split COMPUTER takes |
@@ -663,6 +710,13 @@ All commands run from the repository root inside `app/backend/.venv`.
 | Few-shot benchmark | `eval_fewshot.py --model <dir> --split-dir <set with novel.csv>` | writes `training/configs/fewshot.json` |
 | Other dataset | `eval_external.py --model <dir> --manifest <csv> [--mirror]` | accuracy on overlapping labels |
 
+**SignLine intro word model** (26 classes, optional local model): download exact Good/Goodmorning/
+Goodafternoon clips with `download_signline_intro_terms.py`; assemble the 390 ISL500 signer clips with
+`prepare_signline_intro_data.py`; then run `train_signline_intro_model.py prepare --workers 4` and
+`train_signline_intro_model.py train`. The final model/report are in ignored local `data/processed/`
+and `experiments/reports/` directories. Users 013-015 are the locked test; training-only extra CISLR/
+INCLUDE clips are available but excluded by default because grouped CV was lower with them.
+
 **Extraction settings** (`configs/data.yaml`): MediaPipe Tasks `hand_landmarker.task` +
 `pose_landmarker_full.task` (in `training/assets/mediapipe/`, downloaded separately), confidence
 0.5, ≤30 fps, 4 workers. The browser uses `pose_landmarker_lite.task`.
@@ -710,6 +764,7 @@ The landmark `.npz` files must exist first (Section 12 explains how to rebuild t
 |---|---|---|---|---|
 | `include` | 4,292 | 263 | INCLUDE pose release (AI4Bharat OpenHands, Zenodo 6674324), converted | CC-BY-4.0 |
 | `include_video` | 2,795 (2,672 used) | 181 | INCLUDE original videos (Zenodo 4010759; 10 of 15 categories; at `C:\ISL\ISLTrainingData` as 29 zips), re-extracted with the browser's MediaPipe pipeline | CC-BY-4.0 |
+| `signline_intro` | 390 | 26 | ISL500/ISL-DATA videos, 15 signers per selected word; local ignored video/landmark artifacts | academic/research use; contact authors for commercial use |
 | `islwords` | 1,210 (1,204 in the splits) | 61 | MUDRA team recordings (`C:\ISL\archive\Video_Dataset`), 7 recording days, 41 words on a single day. Rotated copies (`_left_tilt`, `_right_tilt`) exist on disk but are in no manifest | team; **licence to be confirmed before public release** |
 | `app` | 0 so far | – | Record page | recorders; not committed |
 
@@ -810,6 +865,9 @@ Other measurements:
 
 | Measurement | Result | Model |
 |---|---|---|
+| Common-word video model, locked signer-held-out clips | 45/51 top-1 (88.2%), macro-F1 0.877 | `common_word_video`; mixed-source training, webcam accuracy unknown |
+| ISL500 14-word pilot, locked Users 013-015 (41 trackable clips) | 33/41 top-1 (80.5%), macro-F1 0.794 | `isl500_video`; webcam accuracy unknown |
+| SignLine 26-word experiment, locked Users 013-015 (77 trackable clips) | 48/77 top-1 (62.3%), macro-F1 0.596 | `signline_intro_video`; now hidden from live model selection |
 | Unseen INCLUDE recording sessions, clip level | 66.7% video copies (top-5 91.3%) / 66.8% pose copies (top-5 88.2%) | v3 recipe trained without those sessions |
 | …same, continuous streams | 48.4% correct / 9.5% wrong | same |
 | Accuracy vs training sessions per word | 2 sessions 64%, 3-4 → 69%, 5+ → 92% | same |
@@ -840,6 +898,7 @@ Other measurements:
 
 | **letters v1** | 2026-10-16 | `train_letters.py`: alphabet photos, colour-group split, MLP, 200 epochs | 70.9% top-1 test photos (Section 13) |
 | **phrases v1** | 2026-10-16 | `phrases_only.yaml` + seq_len 48, no background | 58.3% top-1 / 81.3% top-5 test videos |
+| **SignLine intro v1 (shelved)** | 2026-10-19 (local) | 26 word classes, shared body/face/hand tracking features, signer-grouped model selection, video references and locked test viewer | 62.3% top-1 / 59.6% macro-F1 on 77 locked clips from Users 013-015; hidden from live model selection |
 
 v8 is deployed; v6 is kept beside it for rollback until v8 is confirmed live (`53558e1` removed older models; they remain in git history).
 
@@ -996,7 +1055,9 @@ see [`docs/INTRO_SIGNING_GUIDE.md`](docs/INTRO_SIGNING_GUIDE.md).
 
 **Fresh clone:** `python -m venv app/backend/.venv`, `pip install -r app/backend/requirements.txt`
 (installs `mudra_ml` editable), `npm install` in `app/frontend`. The app runs with the committed
-model; the "How to sign it" examples (`/reference`) and the data-dependent tests need the local
+sequence, phrase, alphabet, common-word video, 14-word ISL500 video, 26-word SignLine video, and
+experimental still-sign artifacts under `app/backend/models/`. The "How to sign it" examples
+(`/reference`) and held-out video viewer/data-dependent tests need the local
 `data/metadata/` and `data/processed/` folders. Training needs those plus the MediaPipe `.task`
 files in `training/assets/mediapipe/` from
 `https://storage.googleapis.com/mediapipe-models/<task>/<task>/float16/latest/<task>.task`
@@ -1092,6 +1153,71 @@ and `docs/STATIC_SIGN_GLOSSARY.md`.
 ## 21. Change log (newest first)
 
 Add one entry per push: date · commits · what changed · why · measured effect (split).
+
+### 2026-10-19 · `d9de175` · Package recognition models for fresh clones
+- Added the locally trained common-word BiLSTM, ISL500 14-word SVM, SignLine 26-word SVM, and static
+  top-10 SVM artifacts to `app/backend/models/`, alongside the already tracked v8/v6, phrase, alphabet,
+  and static prototype files. Runtime defaults now load these packaged paths instead of ignored
+  `data/processed/` outputs. This makes model inference available from a fresh clone; source clips,
+  landmarks, splits, and the held-out practice video viewer still require local data.
+- The 14-word and 26-word SVM weights derive from ISL500/ISL-DATA, whose dataset card describes
+  research/academic use only and directs commercial-use inquiries to the authors. Preserve this limit
+  when copying the model artifacts. No model was retrained; existing offline clip metrics are unchanged.
+
+### 2026-10-19 · ISL500 video model recheck and Communication UI refresh (local, uncommitted)
+- Re-ran inference on the saved held-out landmark clips for all three experimental video models:
+  `common_word_video` 45/51 (88.2%, macro-F1 0.877), `isl500_video` 33/41 (80.5%, macro-F1 0.794),
+  and `signline_intro_video` 48/77 (62.3%, macro-F1 0.596). The single untrackable `I` clip is excluded
+  in each ISL500-derived split. Scores reproduce the saved reports; no thresholds or model weights changed.
+  All are offline clip results, not live-webcam accuracy.
+- Communication now defaults to the strongest measured video option (`common_word_video`), retains the
+  14-word ISL500 pilot as an alternative, and removes the lower-scoring 26-class experiment from `/models`
+  and the live picker while keeping its local artifact/report for future work.
+- Folded reference and test videos into closed-by-default sections, shortened mobile page spacing and
+  titles, separated camera status from the tracking toggles, and kept the responsive camera stage and
+  wrapping mode controls. The refreshed desktop view and live model registry were reviewed in the local
+  browser; the narrow layout was not checked on a physical phone. Automated tests/build were not run.
+
+### 2026-10-19 · SignLine intro + everyday video model (local, uncommitted)
+- Added Good, Good morning, Good afternoon, Food, Water, and 15 selected everyday words; the resulting
+  26-class model uses 390 ISL500 clips (15 signers per class). Sentence labels without exact source
+  clips (`ARE`, `FROM`, `PUNE`, `INVENTORS`, `AND`, `IS`, `LINE`) remain excluded; `STUDENT` represents
+  the dataset's gloss for “Students,” and `SIGN` remains in the separate v8 model.
+- Trained an SVM over shared body/face/hand tracking features. Users 001-012 are train/CV; Users 013-015
+  are the locked test. The saved offline result is 48/77 (62.3%) top-1 and macro-F1 0.596. This is not
+  live-webcam accuracy. 115 available CISLR/INCLUDE training clips lowered grouped-CV accuracy and were
+  excluded from the final fit.
+- Added selectable model ID `signline_intro_video`, matching training-video references, and a test-video
+  viewer that uses only clips listed in its report and locked split. Videos, landmarks, and model artifacts
+  remain local/ignored; no user data was committed. Live webcam accuracy is unmeasured.
+
+### 2026-10-19 · live sign boundaries, response freshness and confidence display (local, uncommitted)
+- The shared dynamic streaming segmenter now uses wrist and whole-hand landmark delta with a jitter deadband and
+  separate movement start/release thresholds. Reduced stillness-to-end from 0.6 s to 0.4 s, end rest
+  from 0.4 s to 0.2 s, and same-word duplicate suppression from 1.0 s to 0.25 s. This applies to the
+  sequence, common-word video, and ISL500 video recognizers; the static-pose adapter keeps its separate hold logic.
+- Reduced provisional whole-sign classification frequency from 0.5 s to 0.8 s and drops outgoing
+  webcam frames when the browser WebSocket buffer exceeds 12 KB to avoid accumulating stale work.
+  Communication now displays a confidence meter for completed predictions.
+- No live latency or accuracy benchmark was run; the effect on webcam throughput and sign boundaries
+  still needs a real-camera check.
+
+### 2026-10-19 · local model comparison, test-video viewer and responsive communication UI (uncommitted)
+- Communication can play the exact held-out clips used to evaluate both experimental video models:
+  the 17-word common-video model and the 14-word ISL500 pilot. The common-video test clips are served
+  from the locked test split; the ISL500 clips show their saved offline predictions. A camera action
+  helps the user try a clip. The viewer does not score or save webcam attempts. No dataset videos were
+  added to Git.
+- Reduced the oversized camera panel and spacing on phones, made the mode switch wrap at narrow
+  widths, and applied the mobile layout refinements to the phone-webcam app copy. No new model score
+  was measured; the existing common-video signer-held-out test score remains 45/51 (88.2%).
+- The video browser now follows the selected model's known vocabulary. The broad sequence model and
+  static-pose model can show matching common-word reference clips, the phrase model can show matching
+  phrase source clips, and the alphabet page explains that its source data are still photos. There are
+  7 exact label overlaps between the deployed word model and the common-word reference set, plus 99
+  phrase labels with source folders. Reference and unpartitioned source clips are labelled as such;
+  only the two experimental video models present locked evaluation clips. No model result or score was
+  changed. Auto/Static now lets the user choose between installed static-pose models at runtime.
 
 ### 2026-10-18 · `4a145a8` · static/dynamic learning, tracking and recognition updates
 - Added separate Learning sections for dynamic signs, static poses, alphabet and phrases; static

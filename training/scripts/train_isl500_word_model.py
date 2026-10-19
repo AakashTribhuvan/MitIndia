@@ -123,13 +123,15 @@ def _track_one(row: dict, overwrite: bool) -> dict:
 def prepare(args: argparse.Namespace) -> None:
     if not VIDEO_ROOT.is_dir():
         raise FileNotFoundError(f"Downloaded videos not found: {VIDEO_ROOT}")
-    files = sorted(VIDEO_ROOT.glob("User*/*"))
+    files = sorted(VIDEO_ROOT.glob("*/*"))
     files = [p for p in files if p.is_file() and p.suffix.lower() in {".mp4", ".mov", ".avi"}]
     rows = []
     for path in files:
         label = path.name.split("__", 1)[0].upper()
         signer = path.parent.name
-        if label not in WORDS or signer not in {f"User{i:03}" for i in range(1, 16)}:
+        if signer.startswith("Extra_") and not getattr(args, "include_extra_training", False):
+            continue
+        if label not in WORDS or not (signer.startswith("User") or signer.startswith("Extra_")):
             continue
         sample_id = f"{signer}_{path.stem}"
         output = TRACK_ROOT / label / f"{sample_id}.npz"
@@ -139,8 +141,9 @@ def prepare(args: argparse.Namespace) -> None:
             "raw_path": str(path), "landmarks_path": str(output),
         })
     expected = len(WORDS) * 15
-    if len(rows) != expected:
-        raise ValueError(f"Expected {expected} source videos ({len(WORDS)} words x 15 signers); found {len(rows)}")
+    per_class = {label: sum(row["label"] == label and row["signer_id"].startswith("User") for row in rows) for label in WORDS}
+    if any(count != 15 for count in per_class.values()) or len(rows) < expected:
+        raise ValueError(f"Expected 15 locked ISL500 signer videos per class plus optional training-only source clips; found {per_class}, total={len(rows)}")
 
     TRACK_ROOT.mkdir(parents=True, exist_ok=True)
     workers = max(1, args.workers)
